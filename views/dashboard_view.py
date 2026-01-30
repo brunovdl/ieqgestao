@@ -35,6 +35,8 @@ def dashboard_view(page: ft.Page, db, on_logout, current_user):
         ])
     elif permissions.get("usuarios"):
         initial_content = users_view(page, db)
+    elif permissions.get("colaboradores"):
+        initial_content = collaborators_view(page, db)
     else:
         initial_content = ft.Column([
             ft.Text("Sem Permissões", size=20, weight="bold"),
@@ -67,6 +69,8 @@ def dashboard_view(page: ft.Page, db, on_logout, current_user):
         
         if selected_item == "visitantes":
             main_content.content = visitors_view(page, db)
+        elif selected_item == "colaboradores":
+            main_content.content = collaborators_view(page, db)
         elif selected_item == "celulas":
             main_content.content = ft.Column([
                 ft.Text("Gestão de Células", size=20, weight="bold"),

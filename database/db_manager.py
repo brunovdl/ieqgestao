@@ -47,6 +47,23 @@ class Database:
             )
         ''')
         
+        # Tabela de colaboradores
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS collaborators (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                phone TEXT,
+                email TEXT,
+                address TEXT,
+                role TEXT,
+                department TEXT,
+                hire_date TEXT,
+                registration_date TEXT,
+                observations TEXT,
+                active INTEGER DEFAULT 1
+            )
+        ''')
+        
         # Inserir usuário admin padrão com permissões totais
         cursor.execute(
             """INSERT OR IGNORE INTO users (id, username, password, is_admin, permissions) 
@@ -110,6 +127,104 @@ class Database:
         cursor = self.conn.cursor()
         cursor.execute("SELECT * FROM visitors ORDER BY date_visit DESC")
         return cursor.fetchall()
+    
+    def add_collaborator(self, name, phone, email, address, role, department, hire_date, observations):
+        """
+        Adiciona um novo colaborador ao banco de dados
+        
+        Args:
+            name (str): Nome do colaborador
+            phone (str): Telefone/WhatsApp
+            email (str): E-mail
+            address (str): Endereço
+            role (str): Cargo/Função
+            department (str): Departamento
+            hire_date (str): Data de contratação
+            observations (str): Observações
+            
+        Returns:
+            bool: True se sucesso, False se erro
+        """
+        try:
+            cursor = self.conn.cursor()
+            date_now = datetime.now().strftime("%d/%m/%Y %H:%M")
+            cursor.execute(
+                """INSERT INTO collaborators (name, phone, email, address, role, department, 
+                   hire_date, registration_date, observations, active) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (name, phone, email, address, role, department, hire_date, date_now, observations, 1)
+            )
+            self.conn.commit()
+            return True
+        except Exception as e:
+            print(f"Erro ao adicionar colaborador: {e}")
+            return False
+
+    def get_all_collaborators(self, active_only=True):
+        """
+        Retorna todos os colaboradores cadastrados
+        
+        Args:
+            active_only (bool): Se True, retorna apenas ativos
+            
+        Returns:
+            list: Lista de tuplas com os dados dos colaboradores
+        """
+        cursor = self.conn.cursor()
+        if active_only:
+            cursor.execute("SELECT * FROM collaborators WHERE active = 1 ORDER BY name")
+        else:
+            cursor.execute("SELECT * FROM collaborators ORDER BY name")
+        return cursor.fetchall()
+
+    def update_collaborator(self, collab_id, **kwargs):
+        """
+        Atualiza dados de um colaborador
+        
+        Args:
+            collab_id (int): ID do colaborador
+            **kwargs: Campos a atualizar
+            
+        Returns:
+            bool: True se sucesso, False se erro
+        """
+        try:
+            cursor = self.conn.cursor()
+            updates = []
+            params = []
+            
+            allowed_fields = ['name', 'phone', 'email', 'address', 'role', 
+                            'department', 'hire_date', 'observations', 'active']
+            
+            for field, value in kwargs.items():
+                if field in allowed_fields:
+                    updates.append(f"{field} = ?")
+                    params.append(value)
+            
+            if not updates:
+                return False
+            
+            params.append(collab_id)
+            query = f"UPDATE collaborators SET {', '.join(updates)} WHERE id = ?"
+            
+            cursor.execute(query, params)
+            self.conn.commit()
+            return True
+        except Exception as e:
+            print(f"Erro ao atualizar colaborador: {e}")
+            return False
+
+    def deactivate_collaborator(self, collab_id):
+        """
+        Desativa um colaborador (não deleta)
+        
+        Args:
+            collab_id (int): ID do colaborador
+            
+        Returns:
+            bool: True se sucesso, False se erro
+        """
+        return self.update_collaborator(collab_id, active=0)
 
     def get_user_by_username(self, username):
         """
