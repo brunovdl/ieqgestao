@@ -1,6 +1,6 @@
 """
 IEQ Gestão - Sistema Integrado de Gestão Eclesiástica
-VERSÃO COM FEEDBACKS VISUAIS COMPLETOS
+VERSÃO COM FEEDBACKS VISUAIS COMPLETOS E CORREÇÕES
 """
 import flet as ft
 import sqlite3
@@ -69,6 +69,29 @@ def show_info(page, message):
         bgcolor="blue"
     )
     page.snack_bar.open = True
+    page.update()
+
+def show_loading(page, message="Processando..."):
+    """Mostra um indicador de carregamento"""
+    loading_container = ft.Container(
+        content=ft.Column([
+            ft.ProgressRing(),
+            ft.Text(message, color="white")
+        ], 
+        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        alignment=ft.MainAxisAlignment.CENTER,
+        spacing=20),
+        bgcolor="black54",
+        expand=True
+    )
+    page.overlay.append(loading_container)
+    page.update()
+    return loading_container
+
+def hide_loading(page, loading_container):
+    """Remove o indicador de carregamento"""
+    if loading_container in page.overlay:
+        page.overlay.remove(loading_container)
     page.update()
 
 class ViaCEPService:
@@ -275,6 +298,24 @@ class Database:
         cursor.execute("SELECT * FROM visitors ORDER BY date_visit DESC")
         return cursor.fetchall()
 
+    def update_visitor(self, visitor_id, name, phone, email, address, obs):
+        try:
+            self.conn.execute(
+                """UPDATE visitors SET name = ?, phone = ?, email = ?, address = ?, observations = ? 
+                   WHERE id = ?""",
+                (name, phone, email, address, obs, visitor_id)
+            )
+            self.conn.commit()
+            return True
+        except Exception as e:
+            print(f"Erro ao atualizar visitante: {e}")
+            return False
+
+    def get_visitor_by_id(self, visitor_id):
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM visitors WHERE id = ?", (visitor_id,))
+        return cursor.fetchone()
+
     # --- Voluntários ---
     def add_collaborator(self, name, phone, email, address, role, dept, hire_date, obs):
         try:
@@ -343,7 +384,6 @@ def get_logo(size=80):
         width=size, height=size,
         border_radius=size//2,
         bgcolor=THEME_COLOR,
-        alignment=ft.Alignment(0, 0),
         shadow=ft.BoxShadow(blur_radius=10, color="black26"),
         clip_behavior=ft.ClipBehavior.HARD_EDGE
     )
@@ -415,62 +455,45 @@ def login_view(page: ft.Page, db: Database, on_success):
     member_mode = ft.Ref[ft.Column]()
 
     def attempt_admin_login(e):
-        btn = e.control
-        original_text = btn.text
-        
         # Validação
         if not admin_user.value or not admin_pass.value:
             show_warning(page, "Preencha todos os campos!")
             return
             
-        # Feedback visual de loading
-        btn.text = "Verificando..."
-        btn.disabled = True
-        page.update()
+        loading = show_loading(page, "Verificando credenciais...")
         
         time.sleep(0.5)  # Simula processamento
         
         if db.check_login(admin_user.value, admin_pass.value):
+            hide_loading(page, loading)
             show_success(page, f"Bem-vindo(a), {admin_user.value}!")
             time.sleep(0.3)
             on_success(admin_user.value)
         else:
+            hide_loading(page, loading)
             show_error(page, "Usuário ou senha incorretos!")
-            btn.text = original_text
-            btn.disabled = False
-            page.update()
 
     def attempt_member_login(e):
-        btn = e.control
-        original_text = btn.text
-        
         # Validação
         if not member_user.value or not member_pass.value:
             show_warning(page, "Preencha todos os campos!")
             return
         
-        # Feedback visual de loading
-        btn.text = "Verificando..."
-        btn.disabled = True
-        page.update()
+        loading = show_loading(page, "Verificando credenciais...")
         
         time.sleep(0.5)
         
         if db.check_login(member_user.value, member_pass.value):
+            hide_loading(page, loading)
             show_success(page, f"Bem-vindo(a), {member_user.value}!")
             time.sleep(0.3)
             on_success(member_user.value)
         else:
+            hide_loading(page, loading)
             show_error(page, "Usuário ou senha incorretos!")
-            btn.text = original_text
-            btn.disabled = False
-            page.update()
 
     def google_login_simulation(e):
-        btn = e.control
-        btn.text = "Conectando ao Google..."
-        btn.disabled = True
-        page.update()
+        loading = show_loading(page, "Conectando ao Google...")
         
         time.sleep(1.5)
         
@@ -479,6 +502,7 @@ def login_view(page: ft.Page, db: Database, on_success):
             perms = {"celulas": True, "voluntários": True, "readonly": True}
             db.add_user(google_user, None, False, perms, is_google=True)
         
+        hide_loading(page, loading)
         show_success(page, "Login com Google realizado com sucesso!")
         time.sleep(0.3)
         on_success(google_user)
@@ -500,13 +524,17 @@ def login_view(page: ft.Page, db: Database, on_success):
             page.update()
             return
 
+        loading = show_loading(page, "Criando conta...")
+        
         perms = {"celulas": True, "voluntários": True, "readonly": True}
         
         if db.add_user(reg_name.value, reg_pass.value, False, perms, phone=reg_phone.value):
+            hide_loading(page, loading)
             show_success(page, f"Conta criada com sucesso! Bem-vindo(a), {reg_name.value}!")
             time.sleep(0.5)
             toggle_member_mode("login")
         else:
+            hide_loading(page, loading)
             show_error(page, "Erro ao criar conta. Tente novamente.")
 
     def toggle_member_mode(mode):
@@ -587,12 +615,16 @@ def login_view(page: ft.Page, db: Database, on_success):
                     current_content
                 ]),
                 width=400,
-                border=ft.Border.all(1, "grey"),
+                border=ft.Border(
+                    top=ft.BorderSide(1, "grey"),
+                    right=ft.BorderSide(1, "grey"),
+                    bottom=ft.BorderSide(1, "grey"),
+                    left=ft.BorderSide(1, "grey")
+                ),
                 border_radius=10,
                 clip_behavior=ft.ClipBehavior.HARD_EDGE
             )
         ], horizontal_alignment="center", alignment="center"),
-        alignment=ft.Alignment(0, 0), 
         expand=True, 
         padding=20
     )
@@ -608,9 +640,6 @@ def visitors_view(page: ft.Page, db: Database, readonly: bool = False):
     addr_component = address_form_fields(page)
 
     def save(e):
-        btn = e.control
-        original_text = btn.text
-        
         # Validação
         if not name.value:
             name.error_text = "Campo obrigatório"
@@ -618,14 +647,12 @@ def visitors_view(page: ft.Page, db: Database, readonly: bool = False):
             page.update()
             return
         
-        # Feedback de loading
-        btn.text = "Salvando..."
-        btn.disabled = True
-        page.update()
+        loading = show_loading(page, "Salvando visitante...")
         
         time.sleep(0.3)
         
         if db.add_visitor(name.value, phone.value, email.value, addr_component["get_full_address"](), obs.value):
+            hide_loading(page, loading)
             show_success(page, f"Visitante '{name.value}' cadastrado com sucesso!")
             
             # Limpa os campos
@@ -636,10 +663,9 @@ def visitors_view(page: ft.Page, db: Database, readonly: bool = False):
                 field.value = ""
             addr_component["status"].value = ""
         else:
+            hide_loading(page, loading)
             show_error(page, "Erro ao salvar visitante. Tente novamente.")
         
-        btn.text = original_text
-        btn.disabled = False
         page.update()
 
     return ft.ListView([
@@ -655,19 +681,142 @@ def visitors_view(page: ft.Page, db: Database, readonly: bool = False):
         ft.Button("Salvar Visitante", icon=ft.Icons.SAVE, on_click=save, style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white"))
     ], expand=True, spacing=15, padding=20)
 
-def visitors_list_view(page: ft.Page, db: Database, readonly: bool = False):
-    """Lista de Visitantes com botão de WhatsApp"""
+def visitor_edit_view(page: ft.Page, db: Database, visitor_id: int, on_back_callback):
+    """View de edição de visitante"""
+    # Busca os dados do visitante
+    visitor_data = db.get_visitor_by_id(visitor_id)
+    if not visitor_data:
+        show_error(page, "Visitante não encontrado!")
+        on_back_callback()
+        return ft.Container()
+    
+    v_id, v_name, v_phone, v_email, v_address, v_date, v_obs = visitor_data
+    
+    # Parse do endereço
+    def parse_address(address_str):
+        if not address_str:
+            return {"cep": "", "logradouro": "", "numero": "", "bairro": "", "cidade": "", "uf": ""}
+        try:
+            parts = address_str.split(" CEP: ")
+            cep = parts[1] if len(parts) > 1 else ""
+            main_parts = parts[0].split(" - ")
+            bairro_cidade = main_parts[1].split(", ") if len(main_parts) > 1 else ["", ""]
+            logradouro_numero = main_parts[0].split(", ") if len(main_parts) > 0 else ["", ""]
+            logradouro = logradouro_numero[0] if len(logradouro_numero) > 0 else ""
+            numero = logradouro_numero[1] if len(logradouro_numero) > 1 else ""
+            bairro = bairro_cidade[0] if len(bairro_cidade) > 0 else ""
+            cidade_uf = bairro_cidade[1].split("/") if len(bairro_cidade) > 1 else ["", ""]
+            cidade = cidade_uf[0] if len(cidade_uf) > 0 else ""
+            uf = cidade_uf[1] if len(cidade_uf) > 1 else ""
+            return {"cep": cep, "logradouro": logradouro, "numero": numero, "bairro": bairro, "cidade": cidade, "uf": uf}
+        except:
+            return {"cep": "", "logradouro": "", "numero": "", "bairro": "", "cidade": "", "uf": ""}
+    
+    addr_parts = parse_address(v_address)
+    
+    # Campos do formulário
+    name = ft.TextField(label="Nome *", value=v_name, prefix_icon=ft.Icons.PERSON)
+    phone = ft.TextField(label="WhatsApp", value=v_phone or "", prefix_icon=ft.Icons.PHONE, keyboard_type="phone")
+    email = ft.TextField(label="E-mail", value=v_email or "", prefix_icon=ft.Icons.EMAIL)
+    obs = ft.TextField(label="Observações", value=v_obs or "", multiline=True, min_lines=2)
+    
+    # Campos de endereço
+    cep = ft.TextField(label="CEP", value=addr_parts["cep"], width=150, keyboard_type=ft.KeyboardType.NUMBER, max_length=9)
+    logradouro = ft.TextField(label="Logradouro", value=addr_parts["logradouro"], expand=True)
+    numero = ft.TextField(label="Nº", value=addr_parts["numero"], width=100)
+    bairro = ft.TextField(label="Bairro", value=addr_parts["bairro"], expand=True)
+    cidade = ft.TextField(label="Cidade", value=addr_parts["cidade"], expand=True)
+    uf = ft.TextField(label="UF", value=addr_parts["uf"], width=80)
+    status = ft.Text("", size=12)
+
+    def on_cep_change(e):
+        if len(ViaCEPService.clean_cep(cep.value)) < 8:
+            return
+        status.value = "Buscando..."
+        status.color = "blue"
+        page.update()
+        
+        data = ViaCEPService.search_by_cep(cep.value)
+        if data:
+            logradouro.value = data.get('logradouro', '')
+            bairro.value = data.get('bairro', '')
+            cidade.value = data.get('localidade', '')
+            uf.value = data.get('uf', '')
+            cep.value = ViaCEPService.format_cep(cep.value)
+            status.value = "✓ Endereço encontrado!"
+            status.color = "green"
+            show_success(page, "Endereço carregado com sucesso!")
+        else:
+            status.value = "✗ CEP não encontrado."
+            status.color = "red"
+            show_warning(page, "CEP não encontrado. Verifique o número.")
+        page.update()
+
+    cep.on_change = on_cep_change
+    
+    def save_changes(e):
+        if not name.value:
+            name.error_text = "Campo obrigatório"
+            show_warning(page, "Por favor, preencha o nome do visitante!")
+            page.update()
+            return
+        
+        loading = show_loading(page, "Salvando alterações...")
+        time.sleep(0.3)
+        
+        full_address = f"{logradouro.value}, {numero.value} - {bairro.value}, {cidade.value}/{uf.value} CEP: {cep.value}"
+        
+        if db.update_visitor(visitor_id, name.value, phone.value, email.value, full_address, obs.value):
+            hide_loading(page, loading)
+            show_success(page, f"Visitante '{name.value}' atualizado com sucesso!")
+            time.sleep(0.5)
+            on_back_callback()
+        else:
+            hide_loading(page, loading)
+            show_error(page, "Erro ao atualizar visitante.")
+    
+    def cancel_edit(e):
+        on_back_callback()
+
+    return ft.ListView([
+        ft.Row([
+            ft.IconButton(icon=ft.Icons.ARROW_BACK, on_click=cancel_edit, tooltip="Voltar"),
+            ft.Text("Editar Visitante", size=20, weight="bold")
+        ]),
+        ft.Divider(),
+        name,
+        ft.Row([phone, email]),
+        ft.Divider(),
+        ft.Text("Endereço", weight="bold"),
+        ft.Row([cep, status]),
+        ft.Row([logradouro, numero]),
+        ft.Row([bairro, cidade, uf]),
+        ft.Divider(),
+        obs,
+        ft.Row([
+            ft.OutlinedButton("Cancelar", on_click=cancel_edit, icon=ft.Icons.CANCEL),
+            ft.ElevatedButton("Salvar Alterações", on_click=save_changes, icon=ft.Icons.SAVE,
+                            style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white"))
+        ], spacing=10)
+    ], expand=True, spacing=15, padding=20)
+
+def visitors_list_view(page: ft.Page, db: Database, readonly: bool = False, on_edit_visitor=None):
+    """Lista de Visitantes com botão de WhatsApp e Edição"""
     if readonly:
         return ft.Center(ft.Text("Área restrita."))
 
-    def show_list(e=None):
+    list_column = ft.Column([], scroll="auto", expand=True)
+    
+    def refresh_list(e=None):
+        """Atualiza a lista de visitantes"""
         items = db.get_all_visitors()
         list_controls = []
+        
         if not items:
             list_controls.append(
                 ft.Container(
                     content=ft.Column([
-                        ft.Icon(ft.Icons.PERSON_OFF, size=64, color="grey"),
+                        ft.Icon(ft.Icons.PERSON_REMOVE, size=64, color="grey"),
                         ft.Text("Nenhum visitante cadastrado.", size=16, color="grey")
                     ], horizontal_alignment="center", spacing=10),
                     padding=40
@@ -683,35 +832,72 @@ def visitors_list_view(page: ft.Page, db: Database, readonly: bool = False):
             v_email = v[3]
             v_date = v[5]
             
+            # Botões de ação
+            action_buttons = []
+            
+            # Botão WhatsApp
             if v_phone:
                 whatsapp_url = open_whatsapp(v_phone, v_name)
-                whatsapp_btn = ft.IconButton(
-                    icon=ft.Icons.MESSAGE,
-                    icon_color="green",
-                    tooltip=f"WhatsApp: {v_phone}",
-                    url=whatsapp_url
+                action_buttons.append(
+                    ft.IconButton(
+                        icon=ft.Icons.MESSAGE,
+                        icon_color="green",
+                        tooltip=f"WhatsApp: {v_phone}",
+                        url=whatsapp_url
+                    )
                 )
             else:
-                whatsapp_btn = ft.Icon(ft.Icons.PHONE_DISABLED, color="grey", tooltip="Sem telefone")
+                action_buttons.append(
+                    ft.Icon(ft.Icons.PHONE_DISABLED, color="grey", tooltip="Sem telefone")
+                )
+            
+            # Botão Editar - agora com função de callback
+            if on_edit_visitor:
+                action_buttons.append(
+                    ft.IconButton(
+                        icon=ft.Icons.EDIT,
+                        icon_color=THEME_COLOR,
+                        tooltip="Editar visitante",
+                        data=v_id,
+                        on_click=lambda e: on_edit_visitor(e.control.data)
+                    )
+                )
 
             list_controls.append(
                 ft.Card(
-                    content=ft.ListTile(
-                        leading=ft.Icon(ft.Icons.PERSON, color=THEME_COLOR),
-                        title=ft.Text(v_name, weight="bold"),
-                        subtitle=ft.Text(f"Visita: {v_date}\n{v_phone if v_phone else 'Sem telefone'}"),
-                        trailing=whatsapp_btn
+                    content=ft.Container(
+                        content=ft.Row([
+                            ft.Icon(ft.Icons.PERSON, color=THEME_COLOR, size=40),
+                            ft.Column([
+                                ft.Text(v_name, weight="bold", size=16),
+                                ft.Text(f"Visita: {v_date}", size=12, color="grey"),
+                                ft.Text(v_phone if v_phone else "Sem telefone", size=12, color="grey"),
+                            ], spacing=2, expand=True),
+                            ft.Row(action_buttons, spacing=5)
+                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        padding=15
                     )
                 )
             )
-
-        return list_controls
+        
+        list_column.controls = list_controls
+        page.update()
+    
+    # Inicializa a lista
+    refresh_list()
 
     return ft.Container(
         content=ft.Column([
-            ft.Text("Lista de Visitantes", size=20, weight="bold"),
+            ft.Row([
+                ft.Text("Lista de Visitantes", size=20, weight="bold"),
+                ft.IconButton(
+                    icon=ft.Icons.REFRESH,
+                    tooltip="Atualizar lista",
+                    on_click=refresh_list
+                )
+            ], alignment="spaceBetween"),
             ft.Divider(),
-            ft.Column(show_list(), scroll="auto", expand=True)
+            list_column
         ], expand=True, spacing=10),
         padding=20,
         expand=True
@@ -741,7 +927,7 @@ def volunteers_view(page: ft.Page, db: Database, readonly: bool = False):
             list_controls.append(
                 ft.Container(
                     content=ft.Column([
-                        ft.Icon(ft.Icons.PEOPLE_OFF, size=64, color="grey"),
+                        ft.Icon(ft.Icons.GROUP_REMOVE, size=64, color="grey"),
                         ft.Text("Nenhum voluntário cadastrado.", size=16, color="grey")
                     ], horizontal_alignment="center", spacing=10),
                     padding=40
@@ -781,10 +967,14 @@ def volunteers_view(page: ft.Page, db: Database, readonly: bool = False):
 
     def delete_collab(id, name):
         if readonly: return
+        loading = show_loading(page, "Desativando voluntário...")
+        time.sleep(0.3)
         if db.deactivate_collaborator(id):
+            hide_loading(page, loading)
             show_success(page, f"Voluntário '{name}' desativado com sucesso!")
             show_list()
         else:
+            hide_loading(page, loading)
             show_error(page, "Erro ao desativar voluntário.")
 
     def save(e):
@@ -795,22 +985,18 @@ def volunteers_view(page: ft.Page, db: Database, readonly: bool = False):
             show_warning(page, "Preencha pelo menos Nome e Cargo!")
             return
         
-        btn = e.control
-        original_text = btn.text
-        btn.text = "Salvando..."
-        btn.disabled = True
-        page.update()
+        loading = show_loading(page, "Salvando voluntário...")
         
         time.sleep(0.3)
         
         if db.add_collaborator(name.value, phone.value, email.value, addr_component["get_full_address"](), 
                             role.value, dept.value, hire_date.value, obs.value):
+            hide_loading(page, loading)
             show_success(page, f"Voluntário '{name.value}' cadastrado com sucesso!")
             show_list()
         else:
+            hide_loading(page, loading)
             show_error(page, "Erro ao salvar voluntário.")
-            btn.text = original_text
-            btn.disabled = False
             page.update()
 
     def show_form(e=None):
@@ -854,7 +1040,7 @@ def cells_view(page: ft.Page, db: Database, readonly: bool = False):
             list_controls.append(
                 ft.Container(
                     content=ft.Column([
-                        ft.Icon(ft.Icons.GROUPS_OFF, size=64, color="grey"),
+                        ft.Icon(ft.Icons.GROUP_OFF, size=64, color="grey"),
                         ft.Text("Nenhuma célula cadastrada.", size=16, color="grey")
                     ], horizontal_alignment="center", spacing=10),
                     padding=40
@@ -900,10 +1086,10 @@ def cells_view(page: ft.Page, db: Database, readonly: bool = False):
                                 ft.Text(c_address, size=12, color="grey", expand=True)
                             ], alignment=ft.MainAxisAlignment.START, vertical_alignment=ft.CrossAxisAlignment.START)
                         ], spacing=5), 
-                        padding=ft.Padding(left=20, bottom=10, right=10, top=0)
+                        padding=ft.padding.only(left=20, bottom=10, right=10, top=0)
                     )
                 ]),
-                padding=ft.Padding(0, 5, 0, 5)
+                padding=ft.padding.only(top=5, bottom=5)
             )
 
             list_controls.append(ft.Card(content=card_content))
@@ -922,10 +1108,14 @@ def cells_view(page: ft.Page, db: Database, readonly: bool = False):
 
     def deactivate(id, name):
         if readonly: return
+        loading = show_loading(page, "Desativando célula...")
+        time.sleep(0.3)
         if db.deactivate_cell(id):
+            hide_loading(page, loading)
             show_success(page, f"Célula '{name}' desativada com sucesso!")
             show_list()
         else:
+            hide_loading(page, loading)
             show_error(page, "Erro ao desativar célula.")
 
     def save(e):
@@ -936,22 +1126,18 @@ def cells_view(page: ft.Page, db: Database, readonly: bool = False):
             show_warning(page, "Preencha pelo menos Nome da Célula e Líder!")
             return
         
-        btn = e.control
-        original_text = btn.text
-        btn.text = "Salvando..."
-        btn.disabled = True
-        page.update()
+        loading = show_loading(page, "Salvando célula...")
         
         time.sleep(0.3)
         
         if db.add_cell(name.value, leader.value, host.value, addr_component["get_full_address"](), 
                     day.value, time_field.value, obs.value):
+            hide_loading(page, loading)
             show_success(page, f"Célula '{name.value}' cadastrada com sucesso!")
             show_list()
         else:
+            hide_loading(page, loading)
             show_error(page, "Erro ao salvar célula.")
-            btn.text = original_text
-            btn.disabled = False
             page.update()
 
     def show_form(e=None):
@@ -1014,10 +1200,14 @@ def users_view(page: ft.Page, db: Database, readonly: bool = False):
         page.update()
 
     def delete(id, username):
+        loading = show_loading(page, "Excluindo usuário...")
+        time.sleep(0.3)
         if db.delete_user(id):
+            hide_loading(page, loading)
             show_success(page, f"Usuário '{username}' excluído com sucesso!")
             show_list()
         else:
+            hide_loading(page, loading)
             show_error(page, "Não é possível excluir este usuário.")
 
     def save(e):
@@ -1026,24 +1216,20 @@ def users_view(page: ft.Page, db: Database, readonly: bool = False):
             show_warning(page, "Preencha usuário e senha!")
             return
         
-        btn = e.control
-        original_text = btn.text
-        btn.text = "Criando..."
-        btn.disabled = True
-        page.update()
+        loading = show_loading(page, "Criando usuário...")
         
         time.sleep(0.3)
         
         perms = {"visitantes": p_visit.value, "celulas": p_cell.value, "voluntários": p_collab.value}
         
         if db.add_user(u_name.value, u_pass.value, u_admin.value, perms):
+            hide_loading(page, loading)
             show_success(page, f"Usuário '{u_name.value}' criado com sucesso!")
             u_name.value = u_pass.value = ""
             show_list()
         else:
+            hide_loading(page, loading)
             show_error(page, "Erro ao criar usuário. Nome pode já existir.")
-            btn.text = original_text
-            btn.disabled = False
             page.update()
 
     def show_form(e=None):
@@ -1069,8 +1255,8 @@ def users_view(page: ft.Page, db: Database, readonly: bool = False):
 def main(page: ft.Page):
     page.title = APP_TITLE
     page.theme = ft.Theme(color_scheme_seed=THEME_COLOR)
-    page.window_width = 1000
-    page.window_height = 800
+    page.window.width = 1000
+    page.window.height = 800
     
     db = Database()
     
@@ -1094,6 +1280,12 @@ def main(page: ft.Page):
 
     def show_dashboard():
         page.clean()
+        
+        # Container para a área de conteúdo
+        content_area = ft.Container(expand=True, padding=20)
+        
+        # Variável para controlar a view de edição
+        edit_mode = {"active": False, "visitor_id": None}
         
         rail = ft.NavigationRail(
             selected_index=0,
@@ -1132,19 +1324,47 @@ def main(page: ft.Page):
             
         rail.destinations.append(ft.NavigationRailDestination(icon=ft.Icons.LOGOUT, label="Sair"))
         
-        content_area = ft.Container(expand=True, padding=20)
+        def open_visitor_edit(visitor_id):
+            """Abre a página de edição de visitante"""
+            edit_mode["active"] = True
+            edit_mode["visitor_id"] = visitor_id
+            
+            def back_to_list():
+                edit_mode["active"] = False
+                edit_mode["visitor_id"] = None
+                # Volta para a lista de visitantes
+                rail.selected_index = 1  # Índice da lista de visitantes
+                change_page(1)
+            
+            content_area.content = visitor_edit_view(page, db, visitor_id, back_to_list)
+            rail.selected_index = None  # Desseleciona o rail
+            page.update()
         
         def change_page(index):
             if index == len(rail.destinations) - 1:
                 logout()
                 return
             
+            # Reseta o modo de edição
+            edit_mode["active"] = False
+            edit_mode["visitor_id"] = None
+            
             view_func = pages_map[index]
-            content_area.content = view_func(page, db, readonly=is_readonly)
+            
+            # Se for a lista de visitantes, passa o callback de edição
+            if view_func == visitors_list_view:
+                content_area.content = view_func(page, db, readonly=is_readonly, on_edit_visitor=open_visitor_edit)
+            else:
+                content_area.content = view_func(page, db, readonly=is_readonly)
+            
             page.update()
 
         if pages_map:
-            content_area.content = pages_map[0](page, db, readonly=is_readonly)
+            # Se for a primeira página e for lista de visitantes, passa o callback
+            if pages_map[0] == visitors_list_view:
+                content_area.content = pages_map[0](page, db, readonly=is_readonly, on_edit_visitor=open_visitor_edit)
+            else:
+                content_area.content = pages_map[0](page, db, readonly=is_readonly)
         else:
             content_area.content = ft.Text("Sem permissões de acesso.")
 
@@ -1163,4 +1383,6 @@ def main(page: ft.Page):
     page.add(login_view(page, db, login_success))
 
 if __name__ == "__main__":
+    import warnings
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
     ft.app(target=main, assets_dir="assets")
