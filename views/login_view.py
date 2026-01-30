@@ -11,7 +11,7 @@ def login_view(page: ft.Page, db, on_login_success):
     Args:
         page: Página do Flet
         db: Instância do banco de dados
-        on_login_success: Callback para quando o login for bem-sucedido
+        on_login_success: Callback para quando o login for bem-sucedido (recebe username)
         
     Returns:
         ft.View: View de login
@@ -28,7 +28,7 @@ def login_view(page: ft.Page, db, on_login_success):
     def attempt_login(e):
         """Tenta fazer login com as credenciais fornecidas"""
         if db.check_login(user_input.value, pass_input.value):
-            on_login_success()
+            on_login_success(user_input.value)  # Passa o username
         else:
             error_text.value = "Usuário ou senha inválidos"
             page.update()

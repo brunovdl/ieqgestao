@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # IEQ - Sistema de Gestão
 
 Sistema modular para gerenciamento de igreja, desenvolvido com Flet (Python).
@@ -95,3 +96,6 @@ O sistema utiliza SQLite3 com as seguintes tabelas:
 - [ ] Exportação de relatórios
 - [ ] Dashboard com estatísticas
 - [ ] Sistema de notificações
+=======
+# ieqgestao
+>>>>>>> ebfdd347c34df266c2c8235c6ff7ceffec5cf87f

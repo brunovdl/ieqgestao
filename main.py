@@ -27,13 +27,18 @@ def main(page: ft.Page):
     # Inicializar banco de dados
     db = Database(DB_NAME)
     
+    # Armazenar usuário atual
+    current_user = {"username": None}
+    
     # Callbacks de navegação
-    def go_to_dashboard():
+    def go_to_dashboard(username):
         """Navega para o dashboard"""
+        current_user["username"] = username
         page.run_task(page.push_route, ROUTE_DASHBOARD)
     
     def go_to_login():
         """Navega para o login"""
+        current_user["username"] = None
         page.run_task(page.push_route, ROUTE_LOGIN)
     
     # Gerenciamento de rotas
@@ -44,7 +49,14 @@ def main(page: ft.Page):
         if page.route == ROUTE_LOGIN:
             page.views.append(login_view(page, db, go_to_dashboard))
         elif page.route == ROUTE_DASHBOARD:
-            page.views.append(dashboard_view(page, db, go_to_login))
+            if current_user["username"]:
+                page.views.append(
+                    dashboard_view(page, db, go_to_login, current_user["username"])
+                )
+            else:
+                # Se não tem usuário logado, volta para login
+                page.run_task(page.push_route, ROUTE_LOGIN)
+                return
         
         page.update()
     

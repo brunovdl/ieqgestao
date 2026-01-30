@@ -6,16 +6,6 @@ from utils import ViaCEPService
 
 
 def visitors_view(page: ft.Page, db):
-    """
-    Cria a view de cadastro de visitantes
-    
-    Args:
-        page: Página do Flet
-        db: Instância do banco de dados
-        
-    Returns:
-        ft.Column: Conteúdo da view de visitantes
-    """
     txt_name = ft.TextField(
         label="Nome do Visitante",
         prefix_icon=ft.Icons.PERSON
@@ -49,13 +39,13 @@ def visitors_view(page: ft.Page, db):
     txt_number = ft.TextField(
         label="Número",
         prefix_icon=ft.Icons.NUMBERS,
-        width=150
+        width=130
     )
     
     txt_complement = ft.TextField(
-        label="Complemento (Opcional)",
+        label="Complemento",
         prefix_icon=ft.Icons.HOME_WORK,
-        expand=True
+        width=160
     )
     
     txt_neighborhood = ft.TextField(
@@ -67,13 +57,13 @@ def visitors_view(page: ft.Page, db):
     txt_city = ft.TextField(
         label="Cidade",
         prefix_icon=ft.Icons.LOCATION_CITY,
-        read_only=False
+        read_only=False,
+        width=190
     )
     
     txt_state = ft.TextField(
-        label="Estado (UF)",
+        label="UF",
         prefix_icon=ft.Icons.MAP,
-        max_length=2,
         read_only=False,
         width=100
     )
@@ -117,8 +107,8 @@ def visitors_view(page: ft.Page, db):
             cep_status.value = "✓ CEP encontrado!"
             cep_status.color = "green"
             
-            # Focar no campo número
-            txt_number.focus()
+            # Focar no campo número usando run_task
+            page.run_task(txt_number.focus)
         else:
             cep_status.value = "✗ CEP não encontrado"
             cep_status.color = "red"
