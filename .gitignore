@@ -23,6 +23,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+.env
 
 # Banco de dados
 *.db
@@ -46,3 +47,4 @@ Thumbs.db
 # Ambiente virtual
 venv/
 .venv/
+.env

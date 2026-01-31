@@ -12,6 +12,7 @@ from typing import Optional, Dict
 import os
 from supabase import create_client, Client
 from dotenv import load_dotenv
+from gallery_module import add_gallery_methods_to_database, gallery_view
 
 # Carregar variáveis de ambiente
 load_dotenv()
@@ -162,6 +163,8 @@ class Database:
         """Inicializa conexão com Supabase"""
         self.supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
         print("✓ Conectado ao Supabase")
+        # Adicionar funcionalidades de galeria
+        add_gallery_methods_to_database(Database)
 
     # --- Auth ---
     def check_login(self, username, password):
@@ -195,7 +198,8 @@ class Database:
                 if is_admin:
                     return {
                         "visitantes": True, "celulas": True, 
-                        "usuarios": True, "voluntários": True, 
+                        "usuarios": True, "voluntários": True,
+                        "galeria": True, 
                         "readonly": False, "lista_visitantes": True
                     }
                 
@@ -205,6 +209,9 @@ class Database:
                 
                 if perms.get("visitantes"):
                     perms["lista_visitantes"] = True
+                    
+                if 'galeria' not in perms:
+                    perms['galeria'] = True
                 
                 return perms
             return {}
@@ -964,7 +971,7 @@ def volunteers_view(page: ft.Page, db: Database, readonly: bool = False):
     dept = ft.Dropdown(label="Departamento", options=[
         ft.dropdown.Option("Pastor(a)"), ft.dropdown.Option("Administração"), 
         ft.dropdown.Option("Louvor"), ft.dropdown.Option("Infantil"), 
-        ft.dropdown.Option("Mídia"), ft.dropdown.Option("Obreiro(a)")
+        ft.dropdown.Option("Mídia"), ft.dropdown.Option("Diácono(a)")
     ])
     phone = ft.TextField(label="Telefone")
     email = ft.TextField(label="Email")
@@ -1366,6 +1373,14 @@ def main(page: ft.Page):
             rail.destinations.append(ft.NavigationRailDestination(icon=ft.Icons.BADGE, label="Equipe"))
             pages_map.append(volunteers_view)
             
+        if perms.get("galeria", True):
+            rail.destinations.append(ft.NavigationRailDestination(icon=ft.Icons.PHOTO_LIBRARY, label="Galeria"))
+            pages_map.append(lambda page, db, readonly: gallery_view(
+                page, db, current_user, 
+                show_success, show_error, show_warning, 
+                show_loading, hide_loading, readonly
+            ))
+            
         if perms.get("usuarios"):
             rail.destinations.append(ft.NavigationRailDestination(icon=ft.Icons.SECURITY, label="Usuários"))
             pages_map.append(users_view)
@@ -1428,4 +1443,4 @@ def main(page: ft.Page):
 if __name__ == "__main__":
     import warnings
     warnings.filterwarnings("ignore", category=DeprecationWarning)
-    ft.app(target=main, assets_dir="assets")
+    ft.app(target=main, assets_dir="assets",)
