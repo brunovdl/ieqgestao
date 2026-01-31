@@ -1,23 +1,34 @@
 """
 IEQ Gestão - Sistema Integrado de Gestão Eclesiástica
-VERSÃO COM FEEDBACKS VISUAIS COMPLETOS E CORREÇÕES
+VERSÃO COM SUPABASE (PostgreSQL Cloud)
 """
 import flet as ft
-import sqlite3
 import json
 import requests
 import time
 import urllib.parse
 from datetime import datetime
 from typing import Optional, Dict
+import os
+from supabase import create_client, Client
+from dotenv import load_dotenv
+
+# Carregar variáveis de ambiente
+load_dotenv()
 
 # ==============================================================================
 # CONFIGURAÇÕES E UTILITÁRIOS
 # ==============================================================================
 
 APP_TITLE = "IEQ - Gestão Integrada"
-DB_NAME = "igrejajdportugal.db" 
 THEME_COLOR = "#1976D2"  # Azul IEQ
+
+# Configuração do Supabase
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise ValueError("SUPABASE_URL e SUPABASE_KEY devem estar definidos no arquivo .env")
 
 # ==============================================================================
 # FUNÇÕES DE FEEDBACK VISUAL
@@ -143,229 +154,278 @@ def open_whatsapp(phone, name):
     return url
 
 # ==============================================================================
-# CAMADA DE DADOS (DATABASE)
+# CAMADA DE DADOS (SUPABASE)
 # ==============================================================================
 
 class Database:
     def __init__(self):
-        self.conn = sqlite3.connect(DB_NAME, check_same_thread=False)
-        self.create_tables()
-
-    def create_tables(self):
-        cursor = self.conn.cursor()
-        
-        # Usuários
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                password TEXT,
-                phone TEXT,
-                is_admin INTEGER DEFAULT 0,
-                permissions TEXT DEFAULT '{}',
-                is_google_auth INTEGER DEFAULT 0
-            )
-        ''')
-        
-        # Visitantes
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS visitors (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                phone TEXT,
-                email TEXT,
-                address TEXT,
-                date_visit TEXT,
-                observations TEXT
-            )
-        ''')
-        
-        # Voluntários
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS volunteers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                phone TEXT,
-                email TEXT,
-                address TEXT,
-                role TEXT,
-                department TEXT,
-                hire_date TEXT,
-                registration_date TEXT,
-                observations TEXT,
-                active INTEGER DEFAULT 1
-            )
-        ''')
-
-        # Casa de Cornélio
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS cells (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                leader_name TEXT NOT NULL,
-                host_name TEXT,
-                address TEXT,
-                meeting_day TEXT,
-                meeting_time TEXT,
-                observations TEXT,
-                active INTEGER DEFAULT 1
-            )
-        ''')
-        
-        # Admin Padrão
-        cursor.execute("SELECT count(*) FROM users")
-        if cursor.fetchone()[0] == 0:
-            cursor.execute(
-                "INSERT INTO users (username, password, is_admin, permissions) VALUES (?, ?, ?, ?)",
-                ('admin', 'admin123', 1, '{}')
-            )
-            
-        self.conn.commit()
+        """Inicializa conexão com Supabase"""
+        self.supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        print("✓ Conectado ao Supabase")
 
     # --- Auth ---
     def check_login(self, username, password):
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM users WHERE username = ? AND password = ?", (username, password))
-        return cursor.fetchone()
+        """Verifica login do usuário"""
+        try:
+            response = self.supabase.table('users').select('*').eq('username', username).eq('password', password).execute()
+            if response.data and len(response.data) > 0:
+                return response.data[0]
+            return None
+        except Exception as e:
+            print(f"Erro no login: {e}")
+            return None
     
     def check_user_exists(self, username):
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
-        return cursor.fetchone()
+        """Verifica se usuário existe"""
+        try:
+            response = self.supabase.table('users').select('*').eq('username', username).execute()
+            return response.data and len(response.data) > 0
+        except Exception as e:
+            print(f"Erro ao verificar usuário: {e}")
+            return False
 
     def get_user_permissions(self, username):
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT permissions, is_admin FROM users WHERE username = ?", (username,))
-        result = cursor.fetchone()
-        if result:
-            perms_json, is_admin = result
-            if is_admin:
-                return {
-                    "visitantes": True, "celulas": True, 
-                    "usuarios": True, "voluntários": True, 
-                    "readonly": False, "lista_visitantes": True
-                }
-            try:
-                perms = json.loads(perms_json) if perms_json else {}
+        """Obtém permissões do usuário"""
+        try:
+            response = self.supabase.table('users').select('permissions, is_admin').eq('username', username).execute()
+            if response.data and len(response.data) > 0:
+                user = response.data[0]
+                is_admin = user.get('is_admin', False)
+                
+                if is_admin:
+                    return {
+                        "visitantes": True, "celulas": True, 
+                        "usuarios": True, "voluntários": True, 
+                        "readonly": False, "lista_visitantes": True
+                    }
+                
+                perms = user.get('permissions', {})
+                if isinstance(perms, str):
+                    perms = json.loads(perms)
+                
                 if perms.get("visitantes"):
                     perms["lista_visitantes"] = True
+                
                 return perms
-            except:
-                return {}
-        return {}
+            return {}
+        except Exception as e:
+            print(f"Erro ao obter permissões: {e}")
+            return {}
 
     # --- Cadastro ---
     def add_user(self, username, password, is_admin, perms, phone=None, is_google=False):
+        """Adiciona novo usuário"""
         try:
-            self.conn.execute(
-                """INSERT INTO users (username, password, is_admin, permissions, phone, is_google_auth) 
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (username, password, 1 if is_admin else 0, json.dumps(perms), phone, 1 if is_google else 0)
-            )
-            self.conn.commit()
+            data = {
+                'username': username,
+                'password': password,
+                'is_admin': is_admin,
+                'permissions': perms if isinstance(perms, dict) else json.loads(perms),
+                'phone': phone,
+                'is_google_auth': is_google
+            }
+            self.supabase.table('users').insert(data).execute()
             return True
         except Exception as e:
             print(f"Erro ao criar usuário: {e}")
             return False
             
     def delete_user(self, user_id):
-        if user_id == 1: return False
+        """Deleta usuário (exceto admin)"""
+        if user_id == 1: 
+            return False
         try:
-            self.conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
-            self.conn.commit()
+            self.supabase.table('users').delete().eq('id', user_id).execute()
             return True
-        except: return False
+        except Exception as e:
+            print(f"Erro ao deletar usuário: {e}")
+            return False
         
     def get_all_users(self):
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT id, username, is_admin, permissions FROM users ORDER BY username")
-        return cursor.fetchall()
+        """Lista todos os usuários"""
+        try:
+            response = self.supabase.table('users').select('id, username, is_admin, permissions').order('username').execute()
+            # Converter para tuplas para manter compatibilidade
+            return [(u['id'], u['username'], u['is_admin'], json.dumps(u['permissions'])) for u in response.data]
+        except Exception as e:
+            print(f"Erro ao listar usuários: {e}")
+            return []
 
     # --- Visitantes ---
     def add_visitor(self, name, phone, email, address, obs):
+        """Adiciona novo visitante"""
         try:
-            date_now = datetime.now().strftime("%d/%m/%Y %H:%M")
-            self.conn.execute(
-                "INSERT INTO visitors (name, phone, email, address, date_visit, observations) VALUES (?, ?, ?, ?, ?, ?)",
-                (name, phone, email, address, date_now, obs)
-            )
-            self.conn.commit()
+            data = {
+                'name': name,
+                'phone': phone,
+                'email': email,
+                'address': address,
+                'observations': obs
+            }
+            self.supabase.table('visitors').insert(data).execute()
             return True
-        except: return False
+        except Exception as e:
+            print(f"Erro ao adicionar visitante: {e}")
+            return False
 
     def get_all_visitors(self):
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM visitors ORDER BY date_visit DESC")
-        return cursor.fetchall()
+        """Lista todos os visitantes"""
+        try:
+            response = self.supabase.table('visitors').select('*').order('date_visit', desc=True).execute()
+            # Converter para tuplas e formatar data
+            result = []
+            for v in response.data:
+                # Formatar data ISO para formato brasileiro
+                date_visit = v.get('date_visit', '')
+                if date_visit:
+                    try:
+                        dt = datetime.fromisoformat(date_visit.replace('Z', '+00:00'))
+                        date_visit = dt.strftime("%d/%m/%Y %H:%M")
+                    except:
+                        pass
+                
+                result.append((
+                    v['id'], v['name'], v.get('phone'), v.get('email'),
+                    v.get('address'), date_visit, v.get('observations')
+                ))
+            return result
+        except Exception as e:
+            print(f"Erro ao listar visitantes: {e}")
+            return []
 
     def update_visitor(self, visitor_id, name, phone, email, address, obs):
+        """Atualiza visitante"""
         try:
-            self.conn.execute(
-                """UPDATE visitors SET name = ?, phone = ?, email = ?, address = ?, observations = ? 
-                   WHERE id = ?""",
-                (name, phone, email, address, obs, visitor_id)
-            )
-            self.conn.commit()
+            data = {
+                'name': name,
+                'phone': phone,
+                'email': email,
+                'address': address,
+                'observations': obs
+            }
+            self.supabase.table('visitors').update(data).eq('id', visitor_id).execute()
             return True
         except Exception as e:
             print(f"Erro ao atualizar visitante: {e}")
             return False
 
     def get_visitor_by_id(self, visitor_id):
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM visitors WHERE id = ?", (visitor_id,))
-        return cursor.fetchone()
+        """Busca visitante por ID"""
+        try:
+            response = self.supabase.table('visitors').select('*').eq('id', visitor_id).execute()
+            if response.data and len(response.data) > 0:
+                v = response.data[0]
+                # Formatar data
+                date_visit = v.get('date_visit', '')
+                if date_visit:
+                    try:
+                        dt = datetime.fromisoformat(date_visit.replace('Z', '+00:00'))
+                        date_visit = dt.strftime("%d/%m/%Y %H:%M")
+                    except:
+                        pass
+                
+                return (
+                    v['id'], v['name'], v.get('phone'), v.get('email'),
+                    v.get('address'), date_visit, v.get('observations')
+                )
+            return None
+        except Exception as e:
+            print(f"Erro ao buscar visitante: {e}")
+            return None
 
     # --- Voluntários ---
     def add_collaborator(self, name, phone, email, address, role, dept, hire_date, obs):
+        """Adiciona novo voluntário"""
         try:
-            date_now = datetime.now().strftime("%d/%m/%Y %H:%M")
-            self.conn.execute(
-                """INSERT INTO volunteers (name, phone, email, address, role, department, 
-                   hire_date, registration_date, observations, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (name, phone, email, address, role, dept, hire_date, date_now, obs, 1)
-            )
-            self.conn.commit()
+            data = {
+                'name': name,
+                'phone': phone,
+                'email': email,
+                'address': address,
+                'role': role,
+                'department': dept,
+                'hire_date': hire_date,
+                'observations': obs,
+                'active': True
+            }
+            self.supabase.table('volunteers').insert(data).execute()
             return True
-        except: return False
+        except Exception as e:
+            print(f"Erro ao adicionar voluntário: {e}")
+            return False
 
     def get_all_volunteers(self):
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM volunteers WHERE active = 1 ORDER BY name")
-        return cursor.fetchall()
+        """Lista todos os voluntários ativos"""
+        try:
+            response = self.supabase.table('volunteers').select('*').eq('active', True).order('name').execute()
+            # Converter para tuplas
+            result = []
+            for v in response.data:
+                result.append((
+                    v['id'], v['name'], v.get('phone'), v.get('email'),
+                    v.get('address'), v.get('role'), v.get('department'),
+                    v.get('hire_date'), v.get('registration_date'), v.get('observations'),
+                    v.get('active', True)
+                ))
+            return result
+        except Exception as e:
+            print(f"Erro ao listar voluntários: {e}")
+            return []
 
     def deactivate_collaborator(self, id):
+        """Desativa voluntário"""
         try:
-            self.conn.execute("UPDATE volunteers SET active = 0 WHERE id = ?", (id,))
-            self.conn.commit()
+            self.supabase.table('volunteers').update({'active': False}).eq('id', id).execute()
             return True
-        except: return False
+        except Exception as e:
+            print(f"Erro ao desativar voluntário: {e}")
+            return False
 
     # --- Casa de Cornélio ---
     def add_cell(self, name, leader, host, address, day, time, obs):
+        """Adiciona nova célula"""
         try:
-            self.conn.execute(
-                """INSERT INTO cells (name, leader_name, host_name, address, meeting_day, 
-                   meeting_time, observations, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (name, leader, host, address, day, time, obs, 1)
-            )
-            self.conn.commit()
+            data = {
+                'name': name,
+                'leader_name': leader,
+                'host_name': host,
+                'address': address,
+                'meeting_day': day,
+                'meeting_time': time,
+                'observations': obs,
+                'active': True
+            }
+            self.supabase.table('cells').insert(data).execute()
             return True
         except Exception as e:
-            print(e)
+            print(f"Erro ao adicionar célula: {e}")
             return False
 
     def get_all_cells(self):
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM cells WHERE active = 1 ORDER BY name")
-        return cursor.fetchall()
+        """Lista todas as células ativas"""
+        try:
+            response = self.supabase.table('cells').select('*').eq('active', True).order('name').execute()
+            # Converter para tuplas
+            result = []
+            for c in response.data:
+                result.append((
+                    c['id'], c['name'], c['leader_name'], c.get('host_name'),
+                    c.get('address'), c.get('meeting_day'), c.get('meeting_time'),
+                    c.get('observations'), c.get('active', True)
+                ))
+            return result
+        except Exception as e:
+            print(f"Erro ao listar células: {e}")
+            return []
 
     def deactivate_cell(self, id):
+        """Desativa célula"""
         try:
-            self.conn.execute("UPDATE cells SET active = 0 WHERE id = ?", (id,))
-            self.conn.commit()
+            self.supabase.table('cells').update({'active': False}).eq('id', id).execute()
             return True
-        except: return False
+        except Exception as e:
+            print(f"Erro ao desativar célula: {e}")
+            return False
 
 
 # ==============================================================================
@@ -435,6 +495,17 @@ def address_form_fields(page):
     }
 
 # ==============================================================================
+# VIEWS (TELAS) - MANTIDAS IGUAIS À VERSÃO ORIGINAL
+# ==============================================================================
+# [Todas as funções de view permanecem exatamente iguais: login_view, visitors_view, etc.]
+# Por brevidade, não vou replicar todo o código das views aqui, mas elas permanecem idênticas
+
+# Importar todas as views do arquivo original...
+# (login_view, visitors_view, visitor_edit_view, visitors_list_view, 
+#  volunteers_view, cells_view, users_view)
+
+
+# ==============================================================================
 # VIEWS (TELAS)
 # ==============================================================================
 
@@ -455,14 +526,13 @@ def login_view(page: ft.Page, db: Database, on_success):
     member_mode = ft.Ref[ft.Column]()
 
     def attempt_admin_login(e):
-        # Validação
         if not admin_user.value or not admin_pass.value:
             show_warning(page, "Preencha todos os campos!")
             return
             
         loading = show_loading(page, "Verificando credenciais...")
         
-        time.sleep(0.5)  # Simula processamento
+        time.sleep(0.5)
         
         if db.check_login(admin_user.value, admin_pass.value):
             hide_loading(page, loading)
@@ -474,7 +544,6 @@ def login_view(page: ft.Page, db: Database, on_success):
             show_error(page, "Usuário ou senha incorretos!")
 
     def attempt_member_login(e):
-        # Validação
         if not member_user.value or not member_pass.value:
             show_warning(page, "Preencha todos os campos!")
             return
@@ -562,7 +631,6 @@ def login_view(page: ft.Page, db: Database, on_success):
             ]
         page.update()
 
-    # Layout Membro Inicial
     member_content = ft.Column(
         spacing=15, 
         horizontal_alignment="center",
@@ -582,14 +650,12 @@ def login_view(page: ft.Page, db: Database, on_success):
         ]
     )
 
-    # Layout voluntários
     admin_content = ft.Column([
         ft.Text("Acesso Restrito", size=20, weight="bold", color=THEME_COLOR),
         admin_user, admin_pass,
         ft.Button("Entrar", on_click=attempt_admin_login, width=300, height=45, style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white"))
     ], horizontal_alignment="center", spacing=15)
 
-    # Toggle Manual
     current_content = ft.Container(content=member_content, padding=20)
     
     def switch_tab(e):
@@ -640,7 +706,6 @@ def visitors_view(page: ft.Page, db: Database, readonly: bool = False):
     addr_component = address_form_fields(page)
 
     def save(e):
-        # Validação
         if not name.value:
             name.error_text = "Campo obrigatório"
             show_warning(page, "Por favor, preencha o nome do visitante!")
@@ -655,7 +720,6 @@ def visitors_view(page: ft.Page, db: Database, readonly: bool = False):
             hide_loading(page, loading)
             show_success(page, f"Visitante '{name.value}' cadastrado com sucesso!")
             
-            # Limpa os campos
             name.value = phone.value = email.value = obs.value = ""
             name.error_text = None
             for field in [addr_component["cep"], addr_component["logradouro"], addr_component["numero"], 
@@ -682,8 +746,6 @@ def visitors_view(page: ft.Page, db: Database, readonly: bool = False):
     ], expand=True, spacing=15, padding=20)
 
 def visitor_edit_view(page: ft.Page, db: Database, visitor_id: int, on_back_callback):
-    """View de edição de visitante"""
-    # Busca os dados do visitante
     visitor_data = db.get_visitor_by_id(visitor_id)
     if not visitor_data:
         show_error(page, "Visitante não encontrado!")
@@ -692,7 +754,6 @@ def visitor_edit_view(page: ft.Page, db: Database, visitor_id: int, on_back_call
     
     v_id, v_name, v_phone, v_email, v_address, v_date, v_obs = visitor_data
     
-    # Parse do endereço
     def parse_address(address_str):
         if not address_str:
             return {"cep": "", "logradouro": "", "numero": "", "bairro": "", "cidade": "", "uf": ""}
@@ -714,13 +775,11 @@ def visitor_edit_view(page: ft.Page, db: Database, visitor_id: int, on_back_call
     
     addr_parts = parse_address(v_address)
     
-    # Campos do formulário
     name = ft.TextField(label="Nome *", value=v_name, prefix_icon=ft.Icons.PERSON)
     phone = ft.TextField(label="WhatsApp", value=v_phone or "", prefix_icon=ft.Icons.PHONE, keyboard_type="phone")
     email = ft.TextField(label="E-mail", value=v_email or "", prefix_icon=ft.Icons.EMAIL)
     obs = ft.TextField(label="Observações", value=v_obs or "", multiline=True, min_lines=2)
     
-    # Campos de endereço
     cep = ft.TextField(label="CEP", value=addr_parts["cep"], width=150, keyboard_type=ft.KeyboardType.NUMBER, max_length=9)
     logradouro = ft.TextField(label="Logradouro", value=addr_parts["logradouro"], expand=True)
     numero = ft.TextField(label="Nº", value=addr_parts["numero"], width=100)
@@ -801,14 +860,12 @@ def visitor_edit_view(page: ft.Page, db: Database, visitor_id: int, on_back_call
     ], expand=True, spacing=15, padding=20)
 
 def visitors_list_view(page: ft.Page, db: Database, readonly: bool = False, on_edit_visitor=None):
-    """Lista de Visitantes com botão de WhatsApp e Edição"""
     if readonly:
         return ft.Center(ft.Text("Área restrita."))
 
     list_column = ft.Column([], scroll="auto", expand=True)
     
     def refresh_list(e=None):
-        """Atualiza a lista de visitantes"""
         items = db.get_all_visitors()
         list_controls = []
         
@@ -832,10 +889,8 @@ def visitors_list_view(page: ft.Page, db: Database, readonly: bool = False, on_e
             v_email = v[3]
             v_date = v[5]
             
-            # Botões de ação
             action_buttons = []
             
-            # Botão WhatsApp
             if v_phone:
                 whatsapp_url = open_whatsapp(v_phone, v_name)
                 action_buttons.append(
@@ -851,7 +906,6 @@ def visitors_list_view(page: ft.Page, db: Database, readonly: bool = False, on_e
                     ft.Icon(ft.Icons.PHONE_DISABLED, color="grey", tooltip="Sem telefone")
                 )
             
-            # Botão Editar - agora com função de callback
             if on_edit_visitor:
                 action_buttons.append(
                     ft.IconButton(
@@ -883,7 +937,6 @@ def visitors_list_view(page: ft.Page, db: Database, readonly: bool = False, on_e
         list_column.controls = list_controls
         page.update()
     
-    # Inicializa a lista
     refresh_list()
 
     return ft.Container(
@@ -909,9 +962,9 @@ def volunteers_view(page: ft.Page, db: Database, readonly: bool = False):
     name = ft.TextField(label="Nome Completo *")
     role = ft.TextField(label="Cargo/Função *")
     dept = ft.Dropdown(label="Departamento", options=[
-        ft.dropdown.Option("Pastoral"), ft.dropdown.Option("Administração"), 
+        ft.dropdown.Option("Pastor(a)"), ft.dropdown.Option("Administração"), 
         ft.dropdown.Option("Louvor"), ft.dropdown.Option("Infantil"), 
-        ft.dropdown.Option("Mídia"), ft.dropdown.Option("Zeladoria")
+        ft.dropdown.Option("Mídia"), ft.dropdown.Option("Obreiro(a)")
     ])
     phone = ft.TextField(label="Telefone")
     email = ft.TextField(label="Email")
@@ -980,7 +1033,6 @@ def volunteers_view(page: ft.Page, db: Database, readonly: bool = False):
     def save(e):
         if readonly: return
         
-        # Validação
         if not name.value or not role.value:
             show_warning(page, "Preencha pelo menos Nome e Cargo!")
             return
@@ -1121,7 +1173,6 @@ def cells_view(page: ft.Page, db: Database, readonly: bool = False):
     def save(e):
         if readonly: return
         
-        # Validação
         if not name.value or not leader.value:
             show_warning(page, "Preencha pelo menos Nome da Célula e Líder!")
             return
@@ -1211,7 +1262,6 @@ def users_view(page: ft.Page, db: Database, readonly: bool = False):
             show_error(page, "Não é possível excluir este usuário.")
 
     def save(e):
-        # Validação
         if not u_name.value or not u_pass.value:
             show_warning(page, "Preencha usuário e senha!")
             return
@@ -1281,10 +1331,8 @@ def main(page: ft.Page):
     def show_dashboard():
         page.clean()
         
-        # Container para a área de conteúdo
         content_area = ft.Container(expand=True, padding=20)
         
-        # Variável para controlar a view de edição
         edit_mode = {"active": False, "visitor_id": None}
         
         rail = ft.NavigationRail(
@@ -1325,19 +1373,17 @@ def main(page: ft.Page):
         rail.destinations.append(ft.NavigationRailDestination(icon=ft.Icons.LOGOUT, label="Sair"))
         
         def open_visitor_edit(visitor_id):
-            """Abre a página de edição de visitante"""
             edit_mode["active"] = True
             edit_mode["visitor_id"] = visitor_id
             
             def back_to_list():
                 edit_mode["active"] = False
                 edit_mode["visitor_id"] = None
-                # Volta para a lista de visitantes
-                rail.selected_index = 1  # Índice da lista de visitantes
+                rail.selected_index = 1
                 change_page(1)
             
             content_area.content = visitor_edit_view(page, db, visitor_id, back_to_list)
-            rail.selected_index = None  # Desseleciona o rail
+            rail.selected_index = None
             page.update()
         
         def change_page(index):
@@ -1345,13 +1391,11 @@ def main(page: ft.Page):
                 logout()
                 return
             
-            # Reseta o modo de edição
             edit_mode["active"] = False
             edit_mode["visitor_id"] = None
             
             view_func = pages_map[index]
             
-            # Se for a lista de visitantes, passa o callback de edição
             if view_func == visitors_list_view:
                 content_area.content = view_func(page, db, readonly=is_readonly, on_edit_visitor=open_visitor_edit)
             else:
@@ -1360,7 +1404,6 @@ def main(page: ft.Page):
             page.update()
 
         if pages_map:
-            # Se for a primeira página e for lista de visitantes, passa o callback
             if pages_map[0] == visitors_list_view:
                 content_area.content = pages_map[0](page, db, readonly=is_readonly, on_edit_visitor=open_visitor_edit)
             else:
