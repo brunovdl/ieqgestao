@@ -1,170 +1,89 @@
 """
-Módulo de Galeria de Fotos
-Gerenciamento de álbuns e fotos com Supabase Storage
+Módulo de Galeria de Fotos - VERSÃO RESPONSIVA (Mobile First)
+Compatível com Flet 0.25.2 e o novo layout do app.py
 """
 import flet as ft
 from datetime import datetime
-import base64
-import io
-from PIL import Image
 import uuid
+import os
+import asyncio
 
 # ==============================================================================
-# FUNÇÕES DE GALERIA NO DATABASE
+# FUNÇÕES DE BANCO DE DADOS (MANTIDAS)
 # ==============================================================================
 
 def add_gallery_methods_to_database(db_class):
     """Adiciona métodos de galeria à classe Database"""
     
     def create_album(self, name, description, event_date, created_by):
-        """Cria um novo álbum"""
         try:
-            data = {
-                'name': name,
-                'description': description,
-                'event_date': event_date,
-                'created_by': created_by
-            }
+            data = {'name': name, 'description': description, 'event_date': event_date, 'created_by': created_by}
             response = self.supabase.table('albums').insert(data).execute()
             return response.data[0] if response.data else None
-        except Exception as e:
-            print(f"Erro ao criar álbum: {e}")
-            return None
+        except Exception as e: print(f"Erro criar álbum: {e}"); return None
     
     def get_all_albums(self):
-        """Lista todos os álbuns"""
         try:
             response = self.supabase.table('albums').select('*').order('event_date', desc=True).execute()
             return response.data if response.data else []
-        except Exception as e:
-            print(f"Erro ao listar álbuns: {e}")
-            return []
+        except Exception as e: return []
     
     def get_album_by_id(self, album_id):
-        """Busca álbum por ID"""
         try:
             response = self.supabase.table('albums').select('*').eq('id', album_id).execute()
             return response.data[0] if response.data else None
-        except Exception as e:
-            print(f"Erro ao buscar álbum: {e}")
-            return None
-    
-    def update_album(self, album_id, name, description, event_date):
-        """Atualiza álbum"""
-        try:
-            data = {
-                'name': name,
-                'description': description,
-                'event_date': event_date
-            }
-            self.supabase.table('albums').update(data).eq('id', album_id).execute()
-            return True
-        except Exception as e:
-            print(f"Erro ao atualizar álbum: {e}")
-            return False
+        except Exception as e: return None
     
     def delete_album(self, album_id):
-        """Deleta álbum e suas fotos"""
         try:
-            # Primeiro, deletar todas as fotos do álbum no storage
             photos = self.get_photos_by_album(album_id)
             for photo in photos:
-                try:
-                    self.supabase.storage.from_('gallery').remove([photo['storage_path']])
-                except:
-                    pass
-            
-            # Deletar álbum (cascade vai deletar fotos da tabela)
+                try: self.supabase.storage.from_('gallery').remove([photo['storage_path']])
+                except: pass
             self.supabase.table('albums').delete().eq('id', album_id).execute()
             return True
-        except Exception as e:
-            print(f"Erro ao deletar álbum: {e}")
-            return False
+        except Exception as e: return False
     
     def add_photo(self, album_id, file_name, file_path, storage_path, description, uploaded_by, file_size):
-        """Adiciona foto ao álbum"""
         try:
-            data = {
-                'album_id': album_id,
-                'file_name': file_name,
-                'file_path': file_path,
-                'storage_path': storage_path,
-                'description': description,
-                'uploaded_by': uploaded_by,
-                'file_size': file_size
-            }
-            response = self.supabase.table('photos').insert(data).execute()
+            data = {'album_id': album_id, 'file_name': file_name, 'file_path': file_path, 'storage_path': storage_path, 'description': description, 'uploaded_by': uploaded_by, 'file_size': file_size}
+            self.supabase.table('photos').insert(data).execute()
             return response.data[0] if response.data else None
-        except Exception as e:
-            print(f"Erro ao adicionar foto: {e}")
-            return None
+        except Exception as e: return None
     
     def get_photos_by_album(self, album_id):
-        """Lista fotos de um álbum"""
         try:
             response = self.supabase.table('photos').select('*').eq('album_id', album_id).order('created_at', desc=True).execute()
             return response.data if response.data else []
-        except Exception as e:
-            print(f"Erro ao listar fotos: {e}")
-            return []
+        except Exception as e: return []
     
     def delete_photo(self, photo_id):
-        """Deleta foto"""
         try:
-            # Buscar info da foto
             response = self.supabase.table('photos').select('*').eq('id', photo_id).execute()
             if response.data:
                 photo = response.data[0]
-                # Deletar do storage
-                try:
-                    self.supabase.storage.from_('gallery').remove([photo['storage_path']])
-                except:
-                    pass
-                # Deletar do banco
+                try: self.supabase.storage.from_('gallery').remove([photo['storage_path']])
+                except: pass
                 self.supabase.table('photos').delete().eq('id', photo_id).execute()
                 return True
             return False
-        except Exception as e:
-            print(f"Erro ao deletar foto: {e}")
-            return False
+        except Exception as e: return False
     
     def upload_photo_to_storage(self, file_bytes, file_name, album_id):
-        """Faz upload de foto para Supabase Storage"""
         try:
-            # Gerar nome único
             unique_name = f"{album_id}/{uuid.uuid4()}_{file_name}"
-            
-            # Upload para storage
-            self.supabase.storage.from_('gallery').upload(
-                unique_name,
-                file_bytes,
-                file_options={"content-type": "image/jpeg"}
-            )
-            
-            # Obter URL pública
+            self.supabase.storage.from_('gallery').upload(unique_name, file_bytes, file_options={"content-type": "image/jpeg"})
             url = self.supabase.storage.from_('gallery').get_public_url(unique_name)
-            
-            return {
-                'storage_path': unique_name,
-                'public_url': url
-            }
-        except Exception as e:
-            print(f"Erro ao fazer upload: {e}")
-            return None
+            return {'storage_path': unique_name, 'public_url': url}
+        except Exception as e: return None
     
     def get_photo_url(self, storage_path):
-        """Obtém URL pública da foto"""
-        try:
-            return self.supabase.storage.from_('gallery').get_public_url(storage_path)
-        except Exception as e:
-            print(f"Erro ao obter URL: {e}")
-            return None
-    
-    # Adicionar métodos à classe
+        try: return self.supabase.storage.from_('gallery').get_public_url(storage_path)
+        except Exception as e: return None
+
     db_class.create_album = create_album
     db_class.get_all_albums = get_all_albums
     db_class.get_album_by_id = get_album_by_id
-    db_class.update_album = update_album
     db_class.delete_album = delete_album
     db_class.add_photo = add_photo
     db_class.get_photos_by_album = get_photos_by_album
@@ -173,558 +92,294 @@ def add_gallery_methods_to_database(db_class):
     db_class.get_photo_url = get_photo_url
 
 # ==============================================================================
-# VIEW DE GALERIA
+# VIEW DE GALERIA RESPONSIVA
 # ==============================================================================
 
 def gallery_view(page: ft.Page, db, current_user, show_success, show_error, show_warning, show_loading, hide_loading, readonly=False):
-    """View principal da galeria de fotos"""
+    """View principal da galeria de fotos - Totalmente Responsiva"""
     
     current_view = ft.Ref[ft.Column]()
     selected_album = {'id': None}
+    current_album_photos_list = []
     
     def show_albums_list(e=None):
-        """Mostra lista de álbuns"""
+        """Mostra lista de álbuns com capa (primeira foto)"""
         albums = db.get_all_albums()
         
-        album_cards = []
-        
         if not albums:
-            album_cards.append(
-                ft.Container(
-                    content=ft.Column([
-                        ft.Icon(ft.Icons.PHOTO_ALBUM, size=64, color="grey"),
-                        ft.Text("Nenhum álbum criado.", size=16, color="grey"),
-                        ft.Text("Clique em + para criar seu primeiro álbum!", size=12, color="grey")
-                    ], horizontal_alignment="center", spacing=10),
-                    padding=40
-                )
+            content = ft.Container(
+                content=ft.Column([
+                    ft.Icon(ft.Icons.PHOTO_ALBUM, size=50, color="grey"),
+                    ft.Text("Nenhum álbum.", color="grey")
+                ], horizontal_alignment="center"),
+                padding=20, alignment=ft.alignment.center
             )
         else:
+            album_controls = []
             for album in albums:
-                # Contar fotos
-                photos_count = len(db.get_photos_by_album(album['id']))
+                # Busca as fotos para contar e pegar a capa
+                photos = db.get_photos_by_album(album['id'])
+                photos_count = len(photos)
                 
-                # Formatar data
-                event_date = album.get('event_date', '')
-                if event_date:
-                    try:
-                        dt = datetime.fromisoformat(str(event_date))
-                        event_date = dt.strftime("%d/%m/%Y")
-                    except:
+                # Formata a data
+                date_str = "Data não inf."
+                if album.get('event_date'):
+                    try: 
+                        date_str = datetime.fromisoformat(str(album.get('event_date'))).strftime("%d/%m/%Y")
+                    except: 
                         pass
                 
+                # --- LÓGICA DA CAPA DO ÁLBUM ---
+                if photos:
+                    # Se tem fotos, pega a primeira como capa
+                    cover_url = db.get_photo_url(photos[0]['storage_path'])
+                    cover_content = ft.Image(
+                        src=cover_url,
+                        fit=ft.ImageFit.COVER, # Preenche todo o espaço sem distorcer
+                        width=float("inf"),
+                        height=140, # Altura fixa para a capa
+                        repeat=ft.ImageRepeat.NO_REPEAT,
+                        gapless_playback=True
+                    )
+                    # Cor de fundo neutra caso a imagem demore a carregar
+                    cover_bgcolor = ft.colors.GREY_300 
+                else:
+                    # Se não tem fotos, mostra o ícone padrão
+                    cover_content = ft.Icon(ft.Icons.PHOTO_LIBRARY, size=40, color="white")
+                    cover_bgcolor = "#1976D2" # Azul IEQ
+
+                # Card Responsivo
                 card = ft.Card(
                     content=ft.Container(
                         content=ft.Column([
-                            # Imagem de capa (placeholder por enquanto)
+                            # Container da Capa
                             ft.Container(
-                                content=ft.Icon(ft.Icons.PHOTO_LIBRARY, size=60, color="white"),
-                                bgcolor="#1976D2",
-                                height=150,
-                                alignment=ft.alignment.Alignment(0, 0),
-                                border_radius=ft.border_radius.BorderRadius(top_left=10, top_right=10, bottom_left=0, bottom_right=0)
+                                content=cover_content,
+                                bgcolor=cover_bgcolor, 
+                                height=140, # Altura da área da capa
+                                alignment=ft.alignment.center,
+                                border_radius=ft.border_radius.only(top_left=10, top_right=10),
+                                clip_behavior=ft.ClipBehavior.HARD_EDGE # Garante que a imagem respeite as bordas arredondadas
                             ),
-                            # Informações
+                            # Container das Informações
                             ft.Container(
                                 content=ft.Column([
-                                    ft.Text(album['name'], size=18, weight="bold"),
-                                    ft.Text(album.get('description', ''), size=12, color="grey"),
-                                    ft.Divider(height=5),
+                                    ft.Text(album['name'], weight="bold", size=16, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                                    ft.Text(f"{photos_count} fotos • {date_str}", size=12, color="grey"),
+                                    ft.Divider(height=10, color="transparent"),
                                     ft.Row([
-                                        ft.Icon(ft.Icons.PHOTO, size=16, color="grey"),
-                                        ft.Text(f"{photos_count} foto(s)", size=12, color="grey"),
-                                        ft.Icon(ft.Icons.CALENDAR_TODAY, size=16, color="grey"),
-                                        ft.Text(event_date if event_date else "Sem data", size=12, color="grey")
-                                    ], spacing=5),
-                                    ft.Divider(height=5),
-                                    ft.Row([
-                                        ft.TextButton(
-                                            "Ver Fotos",
-                                            icon=ft.Icons.VISIBILITY,
-                                            on_click=lambda e, aid=album['id']: show_album_photos(aid)
-                                        ),
-                                        ft.IconButton(
-                                            icon=ft.Icons.DELETE,
-                                            icon_color="red",
-                                            tooltip="Deletar álbum",
-                                            on_click=lambda e, aid=album['id'], aname=album['name']: confirm_delete_album(aid, aname),
-                                            disabled=readonly
-                                        ) if not readonly else ft.Container()
+                                        ft.OutlinedButton("Abrir", icon=ft.Icons.VISIBILITY, on_click=lambda e, x=album['id']: show_album_photos(x), style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8))),
+                                        ft.IconButton(ft.Icons.DELETE, icon_color="red", tooltip="Excluir Álbum", on_click=lambda e, x=album['id'], n=album['name']: confirm_delete_album(x, n)) if not readonly else ft.Container()
                                     ], alignment="spaceBetween")
-                                ], spacing=5),
-                                padding=10
+                                ]), padding=15
                             )
-                        ]),
-                        width=300
+                        ], spacing=0),
                     ),
-                    elevation=2
+                    col={"sm": 12, "md": 6, "lg": 4, "xl": 3},
+                    elevation=4 # Sombra suave
                 )
-                album_cards.append(card)
+                album_controls.append(card)
+            
+            content = ft.ResponsiveRow(album_controls)
         
-        # Header
-        header_controls = [ft.Text("Galeria de Fotos", size=24, weight="bold")]
+        header = [ft.Text("Galeria", size=24, weight="bold", color="#1976D2")]
         if not readonly:
-            header_controls.append(
-                ft.IconButton(
-                    icon=ft.Icons.ADD,
-                    bgcolor="#1976D2",
-                    icon_color="white",
-                    tooltip="Criar novo álbum",
-                    on_click=show_create_album_form
-                )
-            )
+            header.append(ft.IconButton(ft.Icons.ADD, on_click=show_create_album_form, bgcolor="#1976D2", icon_color="white", tooltip="Novo Álbum"))
         
-        content = ft.Column([
-            ft.Row(header_controls, alignment="spaceBetween"),
+        current_view.current.controls = [
+            ft.Row(header, alignment="spaceBetween"),
             ft.Divider(),
-            ft.Container(
-                content=ft.GridView(
-                    album_cards,
-                    runs_count=3,
-                    max_extent=320,
-                    child_aspect_ratio=0.8,
-                    spacing=10,
-                    run_spacing=10
-                ),
-                expand=True
-            )
-        ], expand=True, scroll="auto")
-        
-        current_view.current.controls = [content]
+            ft.Column([content], scroll="auto", expand=True)
+        ]
         page.update()
-    
-    def confirm_delete_album(album_id, album_name):
-        """Confirma exclusão de álbum"""
-        def delete_confirmed(e):
-            dialog.open = False
-            page.update()
-            
-            loading = show_loading(page, "Deletando álbum...")
-            
-            if db.delete_album(album_id):
-                hide_loading(page, loading)
-                show_success(page, f"Álbum '{album_name}' deletado com sucesso!")
-                show_albums_list()
-            else:
-                hide_loading(page, loading)
-                show_error(page, "Erro ao deletar álbum.")
-        
-        def cancel_delete(e):
-            dialog.open = False
-            page.update()
-        
-        dialog = ft.AlertDialog(
-            title=ft.Text("Confirmar Exclusão"),
-            content=ft.Text(f"Tem certeza que deseja deletar o álbum '{album_name}' e todas as suas fotos?"),
-            actions=[
-                ft.TextButton("Cancelar", on_click=cancel_delete),
-                ft.TextButton("Deletar", on_click=delete_confirmed, style=ft.ButtonStyle(color="red"))
-            ]
-        )
-        page.overlay.append(dialog)
-        dialog.open = True
-        page.update()
-    
+
     def show_create_album_form(e=None):
-        """Formulário de criação de álbum"""
-        album_name = ft.TextField(label="Nome do Álbum *", hint_text="Ex: Culto de Ano Novo 2026")
-        album_desc = ft.TextField(label="Descrição", multiline=True, min_lines=2, max_lines=4)
-        album_date = ft.TextField(label="Data do Evento", hint_text="DD/MM/AAAA", width=200)
+        name = ft.TextField(label="Nome *", col=12)
+        desc = ft.TextField(label="Descrição", multiline=True, col=12)
+        date = ft.TextField(label="Data (DD/MM/AAAA)", col={"sm": 12, "md": 6})
         
-        def save_album(e):
-            if not album_name.value:
-                show_warning(page, "Preencha o nome do álbum!")
-                return
+        def save(e):
+            if not name.value: show_warning(page, "Nome obrigatório!"); return
+            loading = show_loading(page, "Criando...")
+            ev_date = None
+            if date.value:
+                try: ev_date = datetime.strptime(date.value, "%d/%m/%Y").strftime("%Y-%m-%d")
+                except: pass
             
-            loading = show_loading(page, "Criando álbum...")
-            
-            # Converter data
-            event_date = None
-            if album_date.value:
-                try:
-                    dt = datetime.strptime(album_date.value, "%d/%m/%Y")
-                    event_date = dt.strftime("%Y-%m-%d")
-                except:
-                    pass
-            
-            result = db.create_album(
-                album_name.value,
-                album_desc.value,
-                event_date,
-                current_user['username']
-            )
-            
-            hide_loading(page, loading)
-            
-            if result:
-                show_success(page, f"Álbum '{album_name.value}' criado com sucesso!")
+            if db.create_album(name.value, desc.value, ev_date, current_user['username']):
+                hide_loading(page, loading)
+                show_success(page, "Álbum criado!")
                 show_albums_list()
             else:
-                show_error(page, "Erro ao criar álbum.")
-        
+                hide_loading(page, loading)
+                show_error(page, "Erro ao criar.")
+
         content = ft.Column([
-            ft.Row([
-                ft.IconButton(icon=ft.Icons.ARROW_BACK, on_click=show_albums_list, tooltip="Voltar"),
-                ft.Text("Novo Álbum", size=20, weight="bold")
-            ]),
-            ft.Divider(),
-            album_name,
-            album_desc,
-            album_date,
-            ft.Divider(),
-            ft.ElevatedButton(
-                "Criar Álbum",
-                icon=ft.Icons.SAVE,
-                on_click=save_album,
-                style=ft.ButtonStyle(bgcolor="#1976D2", color="white")
-            )
-        ], spacing=15, scroll="auto")
-        
+            ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=show_albums_list), ft.Text("Novo Álbum", size=20, weight="bold")]),
+            ft.ResponsiveRow([name, desc, date]),
+            ft.Button("Salvar", on_click=save, style=ft.ButtonStyle(bgcolor="#1976D2", color="white"))
+        ], scroll="auto", expand=True)
         current_view.current.controls = [content]
         page.update()
-    
+
+    def confirm_delete_album(aid, aname):
+        def delete(e):
+            page.close(dlg)
+            loading = show_loading(page, "Deletando...")
+            if db.delete_album(aid): hide_loading(page, loading); show_success(page, "Deletado!"); show_albums_list()
+            else: hide_loading(page, loading); show_error(page, "Erro.")
+        
+        dlg = ft.AlertDialog(title=ft.Text("Excluir?"), content=ft.Text(f"Apagar '{aname}' e todas as fotos?"), actions=[ft.TextButton("Cancelar", on_click=lambda e: page.close(dlg)), ft.TextButton("Excluir", on_click=delete, style=ft.ButtonStyle(color="red"))])
+        page.open(dlg)
+
+    # --- VISUALIZAÇÃO DE FOTOS ---
     def show_album_photos(album_id):
-        """Mostra fotos de um álbum"""
         selected_album['id'] = album_id
         album = db.get_album_by_id(album_id)
-        
-        if not album:
-            show_error(page, "Álbum não encontrado!")
-            show_albums_list()
-            return
-        
         photos = db.get_photos_by_album(album_id)
+        current_album_photos_list.clear(); current_album_photos_list.extend(photos)
         
-        photo_cards = []
-        
+        photo_controls = []
         if not photos:
-            photo_cards.append(
-                ft.Container(
-                    content=ft.Column([
-                        ft.Icon(ft.Icons.ADD_PHOTO_ALTERNATE, size=64, color="grey"),
-                        ft.Text("Nenhuma foto neste álbum.", size=16, color="grey"),
-                        ft.Text("Clique em + para adicionar fotos!", size=12, color="grey")
-                    ], horizontal_alignment="center", spacing=10),
-                    padding=40
-                )
-            )
+            content = ft.Container(content=ft.Column([ft.Icon(ft.Icons.IMAGE_NOT_SUPPORTED, size=50, color="grey"), ft.Text("Sem fotos.", color="grey")]), alignment=ft.alignment.center, padding=20)
         else:
-            for photo in photos:
-                # Obter URL da foto
-                photo_url = db.get_photo_url(photo['storage_path'])
+            for i, p in enumerate(photos):
+                url = db.get_photo_url(p['storage_path'])
                 
-                card = ft.Card(
+                # Container da Imagem
+                img_container = ft.Container(
+                    content=ft.Image(src=url, fit="cover", repeat=ft.ImageRepeat.NO_REPEAT),
+                    aspect_ratio=1, # Quadrado
+                    border_radius=ft.border_radius.only(top_left=8, top_right=8),
+                    on_click=lambda e, idx=i: open_lightbox(idx),
+                    ink=True
+                )
+                
+                # Barra de Ações (Download e Delete)
+                actions_row = ft.Row([
+                    ft.IconButton(ft.Icons.DOWNLOAD, icon_color="blue", tooltip="Baixar", on_click=lambda e, u=url: page.launch_url(u)),
+                    ft.IconButton(ft.Icons.DELETE, icon_color="red", tooltip="Excluir", on_click=lambda e, pid=p['id']: delete_photo(pid)) if not readonly else ft.Container()
+                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+                
+                # Card Completo
+                photo_card = ft.Card(
                     content=ft.Container(
                         content=ft.Column([
-                            # Imagem
-                            ft.Container(
-                                content=ft.Image(
-                                    src=photo_url,
-                                    fit=ft.ImageFit.COVER,
-                                    width=250,
-                                    height=250,
-                                    error_content=ft.Icon(ft.Icons.BROKEN_IMAGE, size=40)
-                                ),
-                                width=250,
-                                height=250,
-                                border_radius=ft.border_radius.BorderRadius(top_left=10, top_right=10, bottom_left=0, bottom_right=0),
-                                clip_behavior=ft.ClipBehavior.HARD_EDGE
-                            ),
-                            # Info
-                            ft.Container(
-                                content=ft.Column([
-                                    ft.Text(photo['file_name'], size=12, weight="bold", max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
-                                    ft.Text(photo.get('description', ''), size=10, color="grey", max_lines=2),
-                                    ft.Row([
-                                        ft.IconButton(
-                                            icon=ft.Icons.DELETE,
-                                            icon_color="red",
-                                            icon_size=20,
-                                            tooltip="Deletar foto",
-                                            on_click=lambda e, pid=photo['id']: delete_photo(pid),
-                                            disabled=readonly
-                                        ) if not readonly else ft.Container()
-                                    ], alignment="end")
-                                ], spacing=2),
-                                padding=10
-                            )
-                        ]),
-                        width=250
+                            img_container,
+                            ft.Container(actions_row, padding=5)
+                        ], spacing=0),
                     )
                 )
-                photo_cards.append(card)
+
+                # Grid adaptável: 2 por linha no celular (sm=6), 4 no PC (md=3)
+                photo_controls.append(ft.Container(content=photo_card, col={"sm": 6, "md": 4, "lg": 3, "xl": 2}, padding=2))
+            
+            content = ft.ResponsiveRow(photo_controls)
+
+        header = [ft.IconButton(ft.Icons.ARROW_BACK, on_click=show_albums_list), ft.Text(album['name'], size=18, weight="bold", no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS)]
+        if not readonly: header.append(ft.IconButton(ft.Icons.ADD_PHOTO_ALTERNATE, on_click=lambda e: show_upload_form(album_id), bgcolor="#1976D2", icon_color="white"))
         
-        # Header
-        header_controls = [
-            ft.IconButton(icon=ft.Icons.ARROW_BACK, on_click=show_albums_list, tooltip="Voltar"),
-            ft.Text(album['name'], size=20, weight="bold")
+        current_view.current.controls = [
+            ft.Row(header, alignment="spaceBetween"),
+            ft.Divider(),
+            ft.Column([content], scroll="auto", expand=True)
         ]
-        
-        if not readonly:
-            header_controls.append(
-                ft.IconButton(
-                    icon=ft.Icons.ADD_PHOTO_ALTERNATE,
-                    bgcolor="#1976D2",
-                    icon_color="white",
-                    tooltip="Adicionar fotos",
-                    on_click=lambda e: show_upload_form(album_id)
-                )
-            )
-        
-        content = ft.Column([
-            ft.Row(header_controls, alignment="spaceBetween"),
-            ft.Text(album.get('description', ''), size=14, color="grey"),
-            ft.Divider(),
-            ft.Container(
-                content=ft.GridView(
-                    photo_cards,
-                    runs_count=4,
-                    max_extent=270,
-                    child_aspect_ratio=0.85,
-                    spacing=10,
-                    run_spacing=10
-                ) if photos else ft.Column(photo_cards),
-                expand=True
-            )
-        ], expand=True, scroll="auto")
-        
-        current_view.current.controls = [content]
         page.update()
-    
+
     def delete_photo(photo_id):
-        """Deleta uma foto"""
-        loading = show_loading(page, "Deletando foto...")
-        
-        if db.delete_photo(photo_id):
-            hide_loading(page, loading)
-            show_success(page, "Foto deletada com sucesso!")
-            show_album_photos(selected_album['id'])
-        else:
-            hide_loading(page, loading)
-            show_error(page, "Erro ao deletar foto.")
-    
-    def glob_uploads():
-        """Retorna todos os caminhos de arquivos dentro de uploads/, recursivo"""
-        import os
-        result = []
-        for root, dirs, files in os.walk("uploads"):
-            for f in files:
-                result.append(os.path.join(root, f))
-        return result
-    
-    def show_upload_form(album_id):
-        """Formulário de upload de fotos"""
-        photo_description = ft.TextField(label="Descrição (opcional)", multiline=True)
-        selected_files_text = ft.Text("Nenhum arquivo selecionado", size=12, color="grey")
-        progress_text = ft.Text("", size=12, color="blue")
-        
-        selected_files = {'files': [], 'picker': None}
-        upload_button_ref = {'button': None}
-        
-        def on_upload_progress(e: ft.FilePickerUploadEvent):
-            """Callback de progresso do upload"""
-            if e.progress is not None:
-                progress_text.value = f"Enviando {e.file_name}: {int(e.progress * 100)}%"
-                page.update()
-        
-        async def handle_pick_files(e):
-            """Seleciona arquivos usando a API assíncrona"""
-            try:
-                # Criar FilePicker com callback de progresso
-                file_picker = ft.FilePicker(on_upload=on_upload_progress)
-                selected_files['picker'] = file_picker
-                
-                files = await file_picker.pick_files(
-                    allow_multiple=True,
-                    allowed_extensions=["jpg", "jpeg", "png", "gif", "webp"],
-                    dialog_title="Selecione as fotos"
-                )
-                
-                if files:
-                    selected_files['files'] = files
-                    selected_files_text.value = f"{len(files)} arquivo(s) selecionado(s)"
-                    if upload_button_ref['button']:
-                        upload_button_ref['button'].visible = True
-                else:
-                    selected_files['files'] = []
-                    selected_files_text.value = "Seleção cancelada"
-                    if upload_button_ref['button']:
-                        upload_button_ref['button'].visible = False
-                
-                page.update()
-            except Exception as ex:
-                print(f"Erro ao selecionar arquivos: {ex}")
-                import traceback
-                traceback.print_exc()
-                show_error(page, "Erro ao selecionar arquivos.")
-        
-        async def start_upload(description):
-            """Inicia o processo de upload"""
-            if not selected_files['files']:
-                show_warning(page, "Nenhum arquivo selecionado!")
-                return
-            
-            if not selected_files['picker']:
-                show_error(page, "Erro: FilePicker não disponível!")
-                return
-            
-            import os
-            
-            try:
-                loading = show_loading(page, f"Fazendo upload de {len(selected_files['files'])} foto(s)...")
-                
-                # Garantir que a pasta uploads existe
-                os.makedirs("uploads", exist_ok=True)
-                
-                # Tirar snapshot da pasta antes do upload
-                files_before = set(glob_uploads())
-                print(f"Arquivos na pasta antes do upload: {files_before}")
-                
-                # Preparar lista de uploads usando nome original
-                upload_list = []
-                for file in selected_files['files']:
-                    upload_url = page.get_upload_url(file.name, 600)
-                    upload_list.append(
-                        ft.FilePickerUploadFile(
-                            name=file.name,
-                            upload_url=upload_url
-                        )
-                    )
-                
-                # Fazer upload para o servidor do Flet
-                print(f"Iniciando upload de {len(upload_list)} arquivo(s)...")
-                await selected_files['picker'].upload(upload_list)
-                print("Upload para Flet concluído!")
-                
+        def confirm(e):
+            page.close(dlg)
+            loading = show_loading(page, "Excluindo...")
+            if db.delete_photo(photo_id):
                 hide_loading(page, loading)
-                
-                # Tirar snapshot depois e encontrar os arquivos novos
-                files_after = set(glob_uploads())
-                new_files = files_after - files_before
-                print(f"Arquivos novos encontrados: {new_files}")
-                
-                if not new_files:
-                    show_error(page, "Nenhum arquivo foi salvo pelo Flet após o upload.")
-                    return
-                
-                # Enviar os arquivos novos para o Supabase
-                loading = show_loading(page, "Processando fotos no Supabase...")
-                uploaded_count = 0
-                errors = []
-                
-                for file_path in new_files:
-                    try:
-                        file_name = os.path.basename(file_path)
-                        
-                        with open(file_path, 'rb') as f:
-                            file_bytes = f.read()
-                        
-                        print(f"✓ Arquivo lido: {file_name} ({len(file_bytes)} bytes)")
-                        
-                        # upload_photo_to_storage gera o nome único internamente
-                        upload_result = db.upload_photo_to_storage(file_bytes, file_name, album_id)
-                        
-                        if upload_result:
-                            db.add_photo(
-                                album_id=album_id,
-                                file_name=file_name,
-                                file_path=upload_result['public_url'],
-                                storage_path=upload_result['storage_path'],
-                                description=description,
-                                uploaded_by=current_user['username'],
-                                file_size=len(file_bytes)
-                            )
-                            uploaded_count += 1
-                            print(f"✓ Upload para Supabase concluído: {file_name}")
-                        else:
-                            errors.append(f"Falha no upload para Supabase: {file_name}")
-                        
-                        # Limpar arquivo temporário
-                        try:
-                            os.remove(file_path)
-                            print(f"✓ Arquivo temporário removido: {file_path}")
-                        except Exception as ex:
-                            print(f"Aviso: Não foi possível remover arquivo temporário: {ex}")
-                            
-                    except Exception as ex:
-                        error_msg = f"Erro ao processar {file_path}: {str(ex)}"
-                        print(error_msg)
-                        errors.append(error_msg)
-                        import traceback
-                        traceback.print_exc()
-                
+                show_success(page, "Foto excluída!")
+                show_album_photos(selected_album['id']) # Recarrega a lista
+            else:
                 hide_loading(page, loading)
-                progress_text.value = ""
-                
-                if uploaded_count > 0:
-                    show_success(page, f"{uploaded_count} foto(s) adicionada(s) com sucesso!")
-                    if errors:
-                        print(f"\n⚠ Avisos/Erros: {len(errors)}")
-                        for err in errors[:5]:
-                            print(f"  - {err}")
-                    show_album_photos(album_id)
-                else:
-                    error_summary = "\n".join(errors[:2])
-                    show_error(page, f"Erro ao processar as fotos.\n{error_summary}")
-                    
-            except Exception as ex:
-                hide_loading(page, loading)
-                progress_text.value = ""
-                print(f"Erro geral no upload: {ex}")
-                import traceback
-                traceback.print_exc()
-                show_error(page, f"Erro ao fazer upload: {str(ex)}")
-        
-        def trigger_upload(e):
-            """Wrapper síncrono para chamar a função assíncrona"""
-            import asyncio
-            
-            # Obter o loop de eventos
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-            
-            # Executar a corrotina
-            loop.create_task(start_upload(photo_description.value))
-        
-        # Criar o botão de upload
-        upload_button = ft.ElevatedButton(
-            "Fazer Upload",
-            icon=ft.Icons.UPLOAD,
-            visible=False,
-            on_click=trigger_upload,
-            style=ft.ButtonStyle(bgcolor="#4CAF50", color="white")
+                show_error(page, "Erro ao excluir.")
+
+        dlg = ft.AlertDialog(
+            title=ft.Text("Excluir Foto?"),
+            content=ft.Text("Essa ação não pode ser desfeita."),
+            actions=[
+                ft.TextButton("Cancelar", on_click=lambda e: page.close(dlg)),
+                ft.TextButton("Excluir", on_click=confirm, style=ft.ButtonStyle(color="red"))
+            ]
         )
+        page.open(dlg)
+
+    def show_upload_form(album_id):
+        desc = ft.TextField(label="Descrição (Opcional)", col=12)
+        status = ft.Text("Nenhum arquivo", col=12, size=12)
+        prog = ft.ProgressBar(value=0, visible=False, col=12)
         
-        # Salvar referência
-        upload_button_ref['button'] = upload_button
+        stored_files = []
+        
+        def on_pick(e: ft.FilePickerResultEvent):
+            if e.files:
+                stored_files.extend(e.files)
+                status.value = f"{len(stored_files)} arquivo(s) selecionado(s)"
+                upload_btn.disabled = False
+                page.update()
+
+        picker = ft.FilePicker(on_result=on_pick)
+        page.overlay.append(picker); page.update()
+
+        async def upload_task(d):
+            prog.visible = True; upload_btn.disabled = True; page.update()
+            count = 0
+            for f in stored_files:
+                try:
+                    with open(f.path, 'rb') as io:
+                        bytes_file = io.read()
+                    res = db.upload_photo_to_storage(bytes_file, f.name, album_id)
+                    if res:
+                        db.add_photo(album_id, f.name, res['public_url'], res['storage_path'], d, current_user['username'], len(bytes_file))
+                        count += 1
+                        prog.value = count / len(stored_files); page.update()
+                except: pass
+            
+            show_success(page, f"{count} enviados!")
+            show_album_photos(album_id)
+
+        upload_btn = ft.Button("Enviar", disabled=True, on_click=lambda e: page.run_task(upload_task, desc.value), col=12, style=ft.ButtonStyle(bgcolor="green", color="white"))
         
         content = ft.Column([
-            ft.Row([
-                ft.IconButton(icon=ft.Icons.ARROW_BACK, on_click=lambda e: show_album_photos(album_id), tooltip="Voltar"),
-                ft.Text("Adicionar Fotos", size=20, weight="bold")
-            ]),
-            ft.Divider(),
-            photo_description,
-            ft.ElevatedButton(
-                "Selecionar Fotos",
-                icon=ft.Icons.FILE_OPEN,
-                on_click=handle_pick_files,
-                style=ft.ButtonStyle(bgcolor="#1976D2", color="white")
-            ),
-            selected_files_text,
-            progress_text,
-            upload_button,
-            ft.Text("Formatos aceitos: JPG, PNG, GIF, WEBP", size=12, color="grey"),
-            ft.Text("Os arquivos serão enviados ao clicar em 'Fazer Upload'", size=10, color="grey")
-        ], spacing=15, scroll="auto")
-        
+            ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda e: show_album_photos(album_id)), ft.Text("Upload", size=20, weight="bold")]),
+            ft.ResponsiveRow([
+                desc,
+                ft.Button("Selecionar Fotos", on_click=lambda e: picker.pick_files(allow_multiple=True), icon=ft.Icons.IMAGE_SEARCH, col=12),
+                status, prog, upload_btn
+            ])
+        ], scroll="auto", expand=True)
         current_view.current.controls = [content]
         page.update()
-    
-    # Inicializar view
+
+    # --- LIGHTBOX SIMPLES ---
+    def open_lightbox(idx):
+        if not current_album_photos_list: return
+        current_idx = [idx]
+        
+        img = ft.Image(src=db.get_photo_url(current_album_photos_list[idx]['storage_path']), fit="contain", width=page.width, height=page.height)
+        
+        def close(e): page.overlay.remove(stack); page.update()
+        def nav(delta):
+            new_i = current_idx[0] + delta
+            if 0 <= new_i < len(current_album_photos_list):
+                current_idx[0] = new_i
+                img.src = db.get_photo_url(current_album_photos_list[new_i]['storage_path'])
+                img.update()
+
+        stack = ft.Stack([
+            ft.Container(bgcolor="black", opacity=0.95, on_click=close, expand=True),
+            ft.Container(content=img, alignment=ft.alignment.center),
+            ft.Container(ft.IconButton(ft.Icons.CLOSE, icon_color="white", on_click=close), top=20, right=20),
+            ft.Container(ft.IconButton(ft.Icons.ARROW_BACK, icon_color="white", on_click=lambda e: nav(-1)), left=10, top=page.height/2),
+            ft.Container(ft.IconButton(ft.Icons.ARROW_FORWARD, icon_color="white", on_click=lambda e: nav(1)), right=10, top=page.height/2)
+        ], expand=True)
+        
+        page.overlay.append(stack); page.update()
+
     col = ft.Column(expand=True, ref=current_view)
     show_albums_list()
     return col
