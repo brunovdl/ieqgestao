@@ -34,15 +34,9 @@ jobs:
         echo "SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}" >> .env
         echo "YOUTUBE_CHANNEL_ID=${{ secrets.YOUTUBE_CHANNEL_ID }}" >> .env
 
-    # --- PASSO 1: CONFIGURAR NOME E ÍCONE ---
-    # Este comando cria a estrutura com o nome correto antes de compilar.
-    # Usa 'default' no template para evitar o erro anterior.
-    - name: Configure App Metadata
-      run: |
-        flet create . --template default --org "com.ieq.araraquara" --project-name "ieq_jd_portugal" --product-name "IEQ - Jd Portugal" --description "App de Gestão IEQ Araraquara"
-
-    # --- PASSO 2: GERAR O APK ---
-    # Agora o build apenas compila o que foi configurado acima.
+    # --- COMANDO LIMPO PARA FLET 0.25.2 ---
+    # Removemos --org, --product-name e --project-name pois a versão 0.25.2 
+    # está rejeitando esses argumentos neste ambiente.
     - name: Build APK
       run: |
         flet build apk --module-name app
