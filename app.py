@@ -1,6 +1,6 @@
 """
 IEQ Gestão - Sistema Integrado de Gestão Eclesiástica
-VERSÃO: Carrossel Clicável (Lightbox / Fullscreen)
+VERSÃO: Final para QA (Título Atualizado)
 """
 import flet as ft
 import json
@@ -23,7 +23,8 @@ load_dotenv()
 # CONFIGURAÇÕES E UTILITÁRIOS
 # ==============================================================================
 
-APP_TITLE = "IEQ - Gestão Integrada"
+# --- TÍTULO ATUALIZADO ---
+APP_TITLE = "IEQ Jd Portugal - Araraquara"
 THEME_COLOR = "#1976D2"
 
 # Configurações via .env
@@ -368,38 +369,24 @@ def home_view(page, db, readonly=False):
     carousel_photos = db.get_recent_photos(15)
     if not carousel_photos: carousel_photos = ["https://via.placeholder.com/300x200?text=Bem-vindo"] * 6
     
-    # Lista de controles que será exibida
     carousel_row = ft.Row(spacing=10, alignment=ft.MainAxisAlignment.CENTER)
     current_start_index = [0]
 
     # --- Função Lightbox (Fullscreen) ---
     def open_lightbox_home(src):
-        # Cria a imagem em tela cheia
         img_full = ft.Image(src=src, fit=ft.ImageFit.CONTAIN, width=page.width, height=page.height)
-        
         stack = ft.Stack([
-            # Fundo preto com clique para fechar
             ft.Container(bgcolor="black", opacity=0.9, on_click=lambda e: close_lightbox(stack), expand=True),
-            # Imagem centralizada
             ft.Container(content=img_full, alignment=ft.alignment.center),
-            # Botão fechar (X) no topo
-            ft.Container(
-                content=ft.IconButton(ft.Icons.CLOSE, icon_color="white", icon_size=30, on_click=lambda e: close_lightbox(stack)),
-                top=20, right=20
-            )
+            ft.Container(content=ft.IconButton(ft.Icons.CLOSE, icon_color="white", icon_size=30, on_click=lambda e: close_lightbox(stack)), top=20, right=20)
         ], expand=True)
-        
-        page.overlay.append(stack)
-        page.update()
+        page.overlay.append(stack); page.update()
 
     def close_lightbox(stack):
-        page.overlay.remove(stack)
-        page.update()
+        page.overlay.remove(stack); page.update()
 
     def update_carousel_view(do_update=True):
-        """Atualiza a lista de fotos visíveis com segurança"""
         w = page.width if page.width else 800
-        
         if w < 600: num_visible = 3
         elif w < 1000: num_visible = 4
         else: num_visible = 6
@@ -413,33 +400,14 @@ def home_view(page, db, readonly=False):
         for i in range(num_visible):
             idx = (current_start_index[0] + i) % len(carousel_photos)
             src = carousel_photos[idx]
-            
-            img = ft.Image(
-                src=src,
-                height=160,
-                width=img_width,
-                fit=ft.ImageFit.COVER,
-                border_radius=8,
-                gapless_playback=True,
-                animate_size=300
-            )
-            
-            # Container clicável para abrir o Lightbox
-            container = ft.Container(
-                content=img,
-                on_click=lambda e, s=src: open_lightbox_home(s), # Passa o 'src' correto usando default arg
-                ink=True, # Efeito visual de clique
-                border_radius=8
-            )
-            
+            img = ft.Image(src=src, height=160, width=img_width, fit=ft.ImageFit.COVER, border_radius=8, gapless_playback=True, animate_size=300)
+            container = ft.Container(content=img, on_click=lambda e, s=src: open_lightbox_home(s), ink=True, border_radius=8)
             visible_images.append(container)
             
         carousel_row.controls = visible_images
-        
         if do_update:
             try:
-                if carousel_row.page:
-                    carousel_row.update()
+                if carousel_row.page: carousel_row.update()
             except: pass
 
     def cycle_carousel():
@@ -451,15 +419,12 @@ def home_view(page, db, readonly=False):
             except: break
 
     update_carousel_view(do_update=False)
-
-    if len(carousel_photos) > 1:
-        threading.Thread(target=cycle_carousel, daemon=True).start()
+    if len(carousel_photos) > 1: threading.Thread(target=cycle_carousel, daemon=True).start()
 
     # --- YouTube Dinâmico ---
     clean_id = YOUTUBE_CHANNEL_ID.strip().replace('"', '').replace("'", "") if YOUTUBE_CHANNEL_ID else ""
     thumb_src = get_youtube_thumbnail(clean_id)
     if not thumb_src: thumb_src = "https://img.youtube.com/vi/AKw0E0t2k6c/maxresdefault.jpg"
-    
     live_url = f"https://www.youtube.com/channel/{clean_id}/live" if clean_id else "https://www.youtube.com/"
     streams_url = f"https://www.youtube.com/channel/{clean_id}/streams" if clean_id else "https://www.youtube.com/"
 
@@ -499,7 +464,7 @@ def home_view(page, db, readonly=False):
     refresh_agenda()
     
     return ft.ListView([
-        ft.Text("Bem-vindo à IEQ", size=24, weight="bold", color=THEME_COLOR),
+        ft.Text(APP_TITLE, size=24, weight="bold", color=THEME_COLOR),
         ft.Container(content=carousel_row, height=160), 
         ft.Divider(),
         yt_card, ft.Divider(),
