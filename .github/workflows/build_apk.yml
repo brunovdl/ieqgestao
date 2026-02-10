@@ -3,48 +3,42 @@ name: Build Android APK
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch: # Permite rodar manualmente clicando num botão
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Baixa o código do seu repositório
     - name: Checkout code
       uses: actions/checkout@v4
 
-    # 2. Instala o Python
     - name: Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.12'
 
-    # 3. Instala o Flutter (Necessário para o Flet rodar o build)
     - name: Setup Flutter
       uses: subosito/flutter-action@v2
       with:
-        flutter-version: '3.24.0' # Versão estável compatível
+        flutter-version: '3.24.0'
 
-    # 4. Instala as dependências do Python (Flet, Supabase, etc.)
     - name: Install Python Dependencies
       run: |
         pip install --upgrade pip
         pip install -r requirements.txt
 
-    # 5. Recria o arquivo .env usando as Secrets do GitHub
     - name: Create .env file
       run: |
         echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env
         echo "SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}" >> .env
         echo "YOUTUBE_CHANNEL_ID=${{ secrets.YOUTUBE_CHANNEL_ID }}" >> .env
 
-    # 6. Comando Mágico: Compila o APK
+    # CORREÇÃO AQUI: Trocado --project-name por --product-name
     - name: Build APK
       run: |
-        flet build apk --module-name app --include-packages flet,supabase,python-dotenv,requests --org "com.ieq.araraquara" --project-name "IEQ Araraquara"
+        flet build apk --module-name app --include-packages flet,supabase,python-dotenv,requests --org "com.ieq.araraquara" --product-name "IEQ Araraquara"
 
-    # 7. Faz o Upload do APK gerado para você baixar
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
