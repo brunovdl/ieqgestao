@@ -1,6 +1,6 @@
 """
 IEQ Gestão - Sistema Integrado de Gestão Eclesiástica
-VERSÃO RESPONSIVA (Mobile First + Desktop)
+VERSÃO: Carrossel Clicável (Lightbox / Fullscreen)
 """
 import flet as ft
 import json
@@ -8,6 +8,7 @@ import requests
 import time
 import threading
 import urllib.parse
+import xml.etree.ElementTree as ET
 from datetime import datetime
 from typing import Optional, Dict
 import os
@@ -25,50 +26,40 @@ load_dotenv()
 APP_TITLE = "IEQ - Gestão Integrada"
 THEME_COLOR = "#1976D2"
 
-# Configuração do Supabase
+# Configurações via .env
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+YOUTUBE_CHANNEL_ID = os.getenv("YOUTUBE_CHANNEL_ID")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     print("AVISO: SUPABASE_URL e SUPABASE_KEY não encontrados no .env")
 
 # ==============================================================================
-# FUNÇÕES DE FEEDBACK VISUAL (ALERTAS NO TOPO)
+# FUNÇÕES DE FEEDBACK VISUAL
 # ==============================================================================
 
 def show_top_message(page, message, color, icon):
     snack_content = ft.Container(
         content=ft.Row([
             ft.Icon(icon, color="white"),
-            ft.Text(message, color="white", weight="bold", size=14, expand=True) # Tamanho 14 melhor para mobile
+            ft.Text(message, color="white", weight="bold", size=14, expand=True)
         ], alignment=ft.MainAxisAlignment.CENTER),
-        bgcolor=color,
-        padding=15,
-        border_radius=10,
+        bgcolor=color, padding=15, border_radius=10,
         shadow=ft.BoxShadow(blur_radius=15, color="black26"),
-        left=10, # Margens menores para mobile
-        right=10,
-        top=-100,
-        opacity=0,
+        left=10, right=10, top=-100, opacity=0,
         animate_position=ft.animation.Animation(500, ft.AnimationCurve.ELASTIC_OUT),
         animate_opacity=ft.animation.Animation(300, ft.AnimationCurve.EASE_IN),
         on_click=lambda e: close_snack(page, e.control)
     )
-
     page.overlay.append(snack_content)
     page.update()
-
-    snack_content.top = 10 # Mais próximo do topo no mobile
+    snack_content.top = 10
     snack_content.opacity = 1
     page.update()
-
     def auto_close():
         time.sleep(4)
-        try:
-            close_snack(page, snack_content)
-        except:
-            pass
-
+        try: close_snack(page, snack_content)
+        except: pass
     threading.Thread(target=auto_close, daemon=True).start()
 
 def close_snack(page, container):
@@ -77,78 +68,64 @@ def close_snack(page, container):
         container.opacity = 0
         page.update()
         time.sleep(0.5)
-        if container in page.overlay:
-            page.overlay.remove(container)
-            page.update()
-    except:
-        pass
+        if container in page.overlay: page.overlay.remove(container); page.update()
+    except: pass
 
 def show_success(page, message): show_top_message(page, message, "green", ft.Icons.CHECK_CIRCLE)
 def show_error(page, message): show_top_message(page, message, "red", ft.Icons.ERROR)
 def show_warning(page, message): show_top_message(page, message, "orange", ft.Icons.WARNING)
-def show_info(page, message): show_top_message(page, message, "blue", ft.Icons.INFO)
-
 def show_loading(page, message="Processando..."):
-    loading_container = ft.Container(
-        content=ft.Column([
-            ft.ProgressRing(),
-            ft.Text(message, color="white")
-        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
-        bgcolor="black54",
-        expand=True,
-        alignment=ft.alignment.center,
-        width=page.width,
-        height=page.height,
-    )
-    page.overlay.append(loading_container)
-    page.update()
-    return loading_container
+    loading = ft.Container(content=ft.Column([ft.ProgressRing(), ft.Text(message, color="white")], horizontal_alignment="center", alignment="center"), bgcolor="black54", expand=True, alignment=ft.alignment.center)
+    page.overlay.append(loading); page.update(); return loading
+def hide_loading(page, loading):
+    if loading in page.overlay: page.overlay.remove(loading); page.update()
 
-def hide_loading(page, loading_container):
-    if loading_container in page.overlay:
-        page.overlay.remove(loading_container)
-        page.update()
+# --- Busca Thumbnail do YouTube ---
+def get_youtube_thumbnail(channel_id):
+    if not channel_id: return None
+    clean_id = channel_id.strip().replace('"', '').replace("'", "")
+    url = f"https://www.youtube.com/feeds/videos.xml?channel_id={clean_id}"
+    try:
+        response = requests.get(url, timeout=3)
+        if response.status_code == 200:
+            root = ET.fromstring(response.content)
+            ns = {'yt': 'http://www.youtube.com/xml/schemas/2015', 'atom': 'http://www.w3.org/2005/Atom'}
+            entry = root.find('atom:entry', ns)
+            if entry:
+                vid = entry.find('yt:videoId', ns).text
+                return f"https://img.youtube.com/vi/{vid}/maxresdefault.jpg"
+    except: pass
+    return None
 
 class ViaCEPService:
     BASE_URL = "https://viacep.com.br/ws"
-    
     @staticmethod
-    def clean_cep(cep: str) -> str:
-        if not cep: return ""
-        return ''.join(filter(str.isdigit, cep))
-    
+    def clean_cep(cep: str) -> str: return ''.join(filter(str.isdigit, cep)) if cep else ""
     @staticmethod
     def format_cep(cep: str) -> str:
         clean = ViaCEPService.clean_cep(cep)
-        if len(clean) == 8:
-            return f"{clean[:5]}-{clean[5:]}"
-        return cep
-    
+        return f"{clean[:5]}-{clean[5:]}" if len(clean) == 8 else cep
     @staticmethod
     def search_by_cep(cep: str) -> Optional[Dict[str, str]]:
         try:
-            clean_cep = ViaCEPService.clean_cep(cep)
-            if len(clean_cep) != 8: return None
-            response = requests.get(f"{ViaCEPService.BASE_URL}/{clean_cep}/json/", timeout=5)
+            clean = ViaCEPService.clean_cep(cep)
+            if len(clean) != 8: return None
+            response = requests.get(f"{ViaCEPService.BASE_URL}/{clean}/json/", timeout=5)
             if response.status_code == 200:
                 data = response.json()
-                if 'erro' not in data: return data
+                return data if 'erro' not in data else None
             return None
-        except Exception as e:
-            print(f"Erro CEP: {e}")
-            return None
+        except: return None
 
 def open_whatsapp(phone, name):
     if not phone: return ""
-    clean_phone = ''.join(filter(str.isdigit, phone))
-    if len(clean_phone) <= 11 and not clean_phone.startswith("55"):
-        clean_phone = "55" + clean_phone
-    message = f"Olá {name}, paz! Sou da IEQ."
-    encoded_message = urllib.parse.quote(message)
-    return f"https://wa.me/{clean_phone}?text={encoded_message}"
+    clean = ''.join(filter(str.isdigit, phone))
+    if len(clean) <= 11 and not clean.startswith("55"): clean = "55" + clean
+    msg = urllib.parse.quote(f"Olá {name}, paz! Sou da IEQ.")
+    return f"https://wa.me/{clean}?text={msg}"
 
 # ==============================================================================
-# CAMADA DE DADOS (SUPABASE) - Mantida idêntica
+# CAMADA DE DADOS (SUPABASE)
 # ==============================================================================
 
 class Database:
@@ -159,171 +136,170 @@ class Database:
             add_gallery_methods_to_database(Database)
         else:
             self.supabase = None
-            print("✗ Erro: Credenciais do Supabase ausentes")
+            print("✗ Erro: Credenciais ausentes")
 
+    # --- Auth & Users ---
     def check_login(self, username, password):
-        if not self.supabase: return None
         try:
             response = self.supabase.table('users').select('*').eq('username', username).eq('password', password).execute()
-            if response.data and len(response.data) > 0: return response.data[0]
-            return None
-        except Exception as e: print(f"Erro no login: {e}"); return None
+            return response.data[0] if response.data else None
+        except: return None
     
     def check_user_exists(self, username):
-        if not self.supabase: return False
-        try:
-            response = self.supabase.table('users').select('*').eq('username', username).execute()
-            return response.data and len(response.data) > 0
-        except Exception as e: return False
+        try: return bool(self.supabase.table('users').select('*').eq('username', username).execute().data)
+        except: return False
 
     def get_user_permissions(self, username):
-        if not self.supabase: return {}
         try:
-            response = self.supabase.table('users').select('permissions, is_admin').eq('username', username).execute()
-            if response.data and len(response.data) > 0:
-                user = response.data[0]
-                if user.get('is_admin', False):
-                    return {"visitantes": True, "celulas": True, "usuarios": True, "voluntários": True, "galeria": True, "readonly": False, "lista_visitantes": True}
-                perms = user.get('permissions', {})
+            res = self.supabase.table('users').select('permissions, is_admin').eq('username', username).execute()
+            if res.data:
+                u = res.data[0]
+                if u.get('is_admin'): 
+                    return {"visitantes": True, "celulas": True, "usuarios": True, "galeria": True, "readonly": False, "home": True}
+                perms = u.get('permissions', {})
                 if isinstance(perms, str): perms = json.loads(perms)
-                if perms.get("visitantes"): perms["lista_visitantes"] = True
-                if 'galeria' not in perms: perms['galeria'] = True
+                perms['home'] = True 
+                if perms.get('visitantes'): perms['lista_visitantes'] = True
                 return perms
             return {}
-        except Exception as e: return {}
+        except: return {}
 
-    def add_user(self, username, password, is_admin, perms, phone=None, is_google=False):
-        if not self.supabase: return False
+    def add_user(self, username, password, is_admin, perms, full_name, email, phone):
         try:
-            data = {'username': username, 'password': password, 'is_admin': is_admin, 'permissions': perms if isinstance(perms, dict) else json.loads(perms), 'phone': phone, 'is_google_auth': is_google}
+            data = {'username': username, 'password': password, 'full_name': full_name, 'email': email, 'phone': phone, 'is_admin': is_admin, 'permissions': perms if isinstance(perms, dict) else json.loads(perms), 'is_google_auth': False}
             self.supabase.table('users').insert(data).execute()
             return True
-        except Exception as e: return False
-            
-    def delete_user(self, user_id):
-        if not self.supabase or user_id == 1: return False
+        except: return False
+    
+    def update_user(self, uid, username, password, is_admin, perms, full_name, email, phone):
         try:
-            self.supabase.table('users').delete().eq('id', user_id).execute()
+            data = {'username': username, 'full_name': full_name, 'email': email, 'phone': phone, 'is_admin': is_admin, 'permissions': perms if isinstance(perms, dict) else json.loads(perms)}
+            if password and password.strip(): data['password'] = password
+            self.supabase.table('users').update(data).eq('id', uid).execute()
             return True
-        except Exception as e: return False
-        
-    def get_all_users(self):
-        if not self.supabase: return []
-        try:
-            response = self.supabase.table('users').select('id, username, is_admin, permissions').order('username').execute()
-            return [(u['id'], u['username'], u['is_admin'], json.dumps(u['permissions'])) for u in response.data]
-        except Exception as e: return []
+        except: return False
 
+    def delete_user(self, uid):
+        if uid == 1: return False 
+        try:
+            self.supabase.table('users').delete().eq('id', uid).execute()
+            return True
+        except: return False
+
+    def get_all_users(self):
+        try:
+            res = self.supabase.table('users').select('id, username, full_name, email, is_admin, permissions').order('full_name').execute()
+            return [(u['id'], u['username'], u.get('full_name', ''), u.get('email', ''), u['is_admin'], json.dumps(u['permissions'])) for u in res.data]
+        except: return []
+
+    def get_user_by_id(self, uid):
+        try: return self.supabase.table('users').select('*').eq('id', uid).execute().data[0]
+        except: return None
+
+    # --- Visitantes ---
     def add_visitor(self, name, phone, email, address, obs):
-        if not self.supabase: return False
         try:
             data = {'name': name, 'phone': phone, 'email': email, 'address': address, 'observations': obs}
             self.supabase.table('visitors').insert(data).execute()
             return True
-        except Exception as e: return False
+        except: return False
 
     def get_all_visitors(self):
-        if not self.supabase: return []
         try:
-            response = self.supabase.table('visitors').select('*').order('date_visit', desc=True).execute()
+            res = self.supabase.table('visitors').select('*').order('date_visit', desc=True).execute()
             result = []
-            for v in response.data:
-                date_visit = v.get('date_visit', '')
-                if date_visit:
-                    try:
-                        dt = datetime.fromisoformat(date_visit.replace('Z', '+00:00'))
-                        date_visit = dt.strftime("%d/%m/%Y %H:%M")
-                    except: pass
-                result.append((v['id'], v['name'], v.get('phone'), v.get('email'), v.get('address'), date_visit, v.get('observations')))
+            for v in res.data:
+                dv = v.get('date_visit', '')
+                try: dv = datetime.fromisoformat(dv.replace('Z', '+00:00')).strftime("%d/%m/%Y %H:%M")
+                except: pass
+                result.append((v['id'], v['name'], v.get('phone'), v.get('email'), v.get('address'), dv, v.get('observations')))
             return result
-        except Exception as e: return []
+        except: return []
 
-    def update_visitor(self, visitor_id, name, phone, email, address, obs):
-        if not self.supabase: return False
+    def update_visitor(self, vid, name, phone, email, address, obs):
         try:
             data = {'name': name, 'phone': phone, 'email': email, 'address': address, 'observations': obs}
-            self.supabase.table('visitors').update(data).eq('id', visitor_id).execute()
+            self.supabase.table('visitors').update(data).eq('id', vid).execute()
             return True
-        except Exception as e: return False
+        except: return False
 
-    def get_visitor_by_id(self, visitor_id):
-        if not self.supabase: return None
+    def delete_visitor(self, vid):
         try:
-            response = self.supabase.table('visitors').select('*').eq('id', visitor_id).execute()
-            if response.data:
-                v = response.data[0]
-                date_visit = v.get('date_visit', '')
-                if date_visit:
-                    try:
-                        dt = datetime.fromisoformat(date_visit.replace('Z', '+00:00'))
-                        date_visit = dt.strftime("%d/%m/%Y %H:%M")
-                    except: pass
-                return (v['id'], v['name'], v.get('phone'), v.get('email'), v.get('address'), date_visit, v.get('observations'))
+            self.supabase.table('visitors').delete().eq('id', vid).execute()
+            return True
+        except: return False
+
+    def get_visitor_by_id(self, vid):
+        try:
+            res = self.supabase.table('visitors').select('*').eq('id', vid).execute()
+            if res.data:
+                v = res.data[0]
+                try: dv = datetime.fromisoformat(v.get('date_visit', '').replace('Z', '+00:00')).strftime("%d/%m/%Y %H:%M")
+                except: dv = ""
+                return (v['id'], v['name'], v.get('phone'), v.get('email'), v.get('address'), dv, v.get('observations'))
             return None
-        except Exception as e: return None
-        
-    def delete_visitor(self, visitor_id):
-        """Deleta um visitante pelo ID"""
-        if not self.supabase: return False
-        try:
-            self.supabase.table('visitors').delete().eq('id', visitor_id).execute()
-            return True
-        except Exception as e:
-            print(f"Erro ao deletar visitante: {e}")
-            return False
+        except: return None
 
-    def add_collaborator(self, name, phone, email, address, role, dept, hire_date, obs):
-        if not self.supabase: return False
-        try:
-            data = {'name': name, 'phone': phone, 'email': email, 'address': address, 'role': role, 'department': dept, 'hire_date': hire_date, 'observations': obs, 'active': True}
-            self.supabase.table('volunteers').insert(data).execute()
-            return True
-        except Exception as e: return False
-
-    def get_all_volunteers(self):
-        if not self.supabase: return []
-        try:
-            response = self.supabase.table('volunteers').select('*').eq('active', True).order('name').execute()
-            result = []
-            for v in response.data:
-                result.append((v['id'], v['name'], v.get('phone'), v.get('email'), v.get('address'), v.get('role'), v.get('department'), v.get('hire_date'), v.get('registration_date'), v.get('observations'), v.get('active', True)))
-            return result
-        except Exception as e: return []
-
-    def deactivate_collaborator(self, id):
-        if not self.supabase: return False
-        try:
-            self.supabase.table('volunteers').update({'active': False}).eq('id', id).execute()
-            return True
-        except Exception as e: return False
-
+    # --- Casas de Cornélio ---
     def add_cell(self, name, leader, host, address, day, time, obs):
-        if not self.supabase: return False
         try:
             data = {'name': name, 'leader_name': leader, 'host_name': host, 'address': address, 'meeting_day': day, 'meeting_time': time, 'observations': obs, 'active': True}
             self.supabase.table('cells').insert(data).execute()
             return True
-        except Exception as e: return False
+        except: return False
 
     def get_all_cells(self):
-        if not self.supabase: return []
         try:
-            response = self.supabase.table('cells').select('*').eq('active', True).order('name').execute()
-            result = []
-            for c in response.data:
-                result.append((c['id'], c['name'], c['leader_name'], c.get('host_name'), c.get('address'), c.get('meeting_day'), c.get('meeting_time'), c.get('observations'), c.get('active', True)))
-            return result
-        except Exception as e: return []
+            res = self.supabase.table('cells').select('*').order('active', desc=True).order('name').execute()
+            return [(c['id'], c['name'], c['leader_name'], c.get('host_name'), c.get('address'), c.get('meeting_day'), c.get('meeting_time'), c.get('observations'), c.get('active')) for c in res.data]
+        except: return []
 
-    def deactivate_cell(self, id):
-        if not self.supabase: return False
+    def deactivate_cell(self, cid):
         try:
-            self.supabase.table('cells').update({'active': False}).eq('id', id).execute()
+            self.supabase.table('cells').update({'active': False}).eq('id', cid).execute()
             return True
-        except Exception as e: return False
+        except: return False
+
+    def activate_cell(self, cid):
+        try:
+            self.supabase.table('cells').update({'active': True}).eq('id', cid).execute()
+            return True
+        except: return False
+
+    def delete_cell_permanent(self, cid):
+        try:
+            self.supabase.table('cells').delete().eq('id', cid).execute()
+            return True
+        except: return False
+
+    # --- AGENDA & HOME ---
+    def add_event(self, title, desc, date, time, loc):
+        try:
+            data = {'title': title, 'description': desc, 'event_date': date, 'event_time': time, 'location': loc}
+            self.supabase.table('agenda').insert(data).execute()
+            return True
+        except: return False
+
+    def get_upcoming_events(self):
+        try:
+            today = datetime.now().strftime("%Y-%m-%d")
+            return self.supabase.table('agenda').select('*').gte('event_date', today).order('event_date').execute().data
+        except: return []
+
+    def delete_event(self, eid):
+        try:
+            self.supabase.table('agenda').delete().eq('id', eid).execute()
+            return True
+        except: return False
+        
+    def get_recent_photos(self, limit=15):
+        try:
+            res = self.supabase.table('photos').select('storage_path').order('created_at', desc=True).limit(limit).execute()
+            return [self.get_photo_url(p['storage_path']) for p in res.data]
+        except: return []
 
 # ==============================================================================
-# COMPONENTES UI RESPONSIVOS
+# UI COMPONENTS
 # ==============================================================================
 
 def get_logo(size=80):
@@ -334,702 +310,430 @@ def get_logo(size=80):
     )
 
 def address_form_fields(page):
-    # ResponsiveRow: sm (celular) = 12 colunas (full), md (tablet/pc) = dividido
     cep = ft.TextField(label="CEP", keyboard_type=ft.KeyboardType.NUMBER, max_length=9, col={"sm": 6, "md": 3})
-    status = ft.Text("", size=12, col={"sm": 6, "md": 9}) # Status ao lado do CEP
-    logradouro = ft.TextField(label="Logradouro", col={"sm": 12, "md": 8})
-    numero = ft.TextField(label="Nº", col={"sm": 12, "md": 4})
+    status = ft.Text("", size=12, col={"sm": 6, "md": 9})
+    logra = ft.TextField(label="Logradouro", col={"sm": 12, "md": 8})
+    num = ft.TextField(label="Nº", col={"sm": 12, "md": 4})
     bairro = ft.TextField(label="Bairro", col={"sm": 12, "md": 4})
-    cidade = ft.TextField(label="Cidade", col={"sm": 8, "md": 6})
+    cid = ft.TextField(label="Cidade", col={"sm": 8, "md": 6})
     uf = ft.TextField(label="UF", col={"sm": 4, "md": 2})
 
     def on_cep_change(e):
         if len(ViaCEPService.clean_cep(cep.value)) < 8: return
-        status.value = "Buscando..."
-        status.color = "blue"
-        page.update()
+        status.value = "Buscando..."; status.color = "blue"; page.update()
         data = ViaCEPService.search_by_cep(cep.value)
         if data:
-            logradouro.value = data.get('logradouro', '')
-            bairro.value = data.get('bairro', '')
-            cidade.value = data.get('localidade', '')
-            uf.value = data.get('uf', '')
+            logra.value, bairro.value, cid.value, uf.value = data.get('logradouro',''), data.get('bairro',''), data.get('localidade',''), data.get('uf','')
             cep.value = ViaCEPService.format_cep(cep.value)
-            status.value = "✓ Encontrado!"
-            status.color = "green"
-            show_success(page, "Endereço carregado!")
-        else:
-            status.value = "✗ Não encontrado."
-            status.color = "red"
-            show_warning(page, "CEP inválido.")
+            status.value = "✓ Encontrado!"; status.color = "green"
+        else: status.value = "✗ Inválido"; status.color = "red"
         page.update()
 
     cep.on_change = on_cep_change
-    
-    # Layout responsivo
-    fields_ui = ft.ResponsiveRow([
-        cep, status,
-        logradouro, numero,
-        bairro, cidade, uf
-    ], vertical_alignment=ft.CrossAxisAlignment.CENTER)
-    
-    return {
-        "ui": fields_ui,
-        "get_full_address": lambda: f"{logradouro.value}, {numero.value} - {bairro.value}, {cidade.value}/{uf.value} CEP: {cep.value}",
-        "cep": cep, "logradouro": logradouro, "numero": numero,
-        "bairro": bairro, "cidade": cidade, "uf": uf, "status": status
-    }
+    ui = ft.ResponsiveRow([cep, status, logra, num, bairro, cid, uf], vertical_alignment=ft.CrossAxisAlignment.CENTER)
+    return {"ui": ui, "get_full_address": lambda: f"{logra.value}, {num.value} - {bairro.value}, {cid.value}/{uf.value} CEP: {cep.value}", 
+            "cep": cep, "logradouro": logra, "numero": num, "bairro": bairro, "cidade": cid, "uf": uf, "status": status}
 
 # ==============================================================================
-# VIEWS (TELAS) - ADAPTADAS PARA RESPONSIVIDADE
+# VIEWS
 # ==============================================================================
 
-def login_view(page: ft.Page, db: Database, on_success):
-    # Componentes com largura responsiva (col)
-    admin_user = ft.TextField(label="Usuário", prefix_icon=ft.Icons.PERSON, col=12)
-    admin_pass = ft.TextField(label="Senha", password=True, can_reveal_password=True, prefix_icon=ft.Icons.LOCK, col=12)
+def login_view(page, db, on_success):
+    user = ft.TextField(label="Usuário", col=12)
+    pwd = ft.TextField(label="Senha", password=True, can_reveal_password=True, col=12)
     
-    member_user = ft.TextField(label="Nome de Usuário", prefix_icon=ft.Icons.PERSON, col=12)
-    member_pass = ft.TextField(label="Senha", password=True, can_reveal_password=True, prefix_icon=ft.Icons.LOCK, col=12)
-    
-    reg_name = ft.TextField(label="Nome de Usuário", prefix_icon=ft.Icons.PERSON, col=12)
-    reg_phone = ft.TextField(label="Telefone", prefix_icon=ft.Icons.PHONE, keyboard_type="phone", col=12)
-    reg_pass = ft.TextField(label="Senha (Min 8 dígitos)", password=True, can_reveal_password=True, prefix_icon=ft.Icons.LOCK, col=12)
-    
-    member_mode = ft.Ref[ft.Column]()
-
-    def attempt_admin_login(e):
-        if not admin_user.value or not admin_pass.value:
-            show_warning(page, "Preencha todos os campos!")
-            return
+    def try_login(e):
+        if not user.value or not pwd.value: show_warning(page, "Preencha tudo!"); return
         loading = show_loading(page, "Entrando...")
         time.sleep(0.5)
-        if db.check_login(admin_user.value, admin_pass.value):
-            hide_loading(page, loading)
-            on_success(admin_user.value)
-        else:
-            hide_loading(page, loading)
-            show_error(page, "Credenciais inválidas!")
+        if db.check_login(user.value, pwd.value):
+            hide_loading(page, loading); on_success(user.value)
+        else: hide_loading(page, loading); show_error(page, "Dados inválidos.")
 
-    def attempt_member_login(e):
-        if not member_user.value or not member_pass.value:
-            show_warning(page, "Preencha todos os campos!")
-            return
-        loading = show_loading(page, "Entrando...")
-        time.sleep(0.5)
-        if db.check_login(member_user.value, member_pass.value):
-            hide_loading(page, loading)
-            on_success(member_user.value)
-        else:
-            hide_loading(page, loading)
-            show_error(page, "Credenciais inválidas!")
-
-    def register_member(e):
-        if not reg_name.value or not reg_pass.value:
-            show_warning(page, "Preencha dados obrigatórios!")
-            return
-        if len(reg_pass.value) < 8:
-            show_warning(page, "Senha muito curta!")
-            return
-        if db.check_user_exists(reg_name.value):
-            show_error(page, "Usuário já existe!")
-            return
-        loading = show_loading(page, "Criando conta...")
-        perms = {"celulas": True, "voluntários": True, "readonly": True}
-        if db.add_user(reg_name.value, reg_pass.value, False, perms, phone=reg_phone.value):
-            hide_loading(page, loading)
-            show_success(page, "Conta criada!")
-            toggle_member_mode("login")
-        else:
-            hide_loading(page, loading)
-            show_error(page, "Erro ao criar conta.")
-
-    def toggle_member_mode(mode):
-        if mode == "register":
-            member_content.controls = [
-                ft.Text("Criar Conta", size=20, weight="bold", color=THEME_COLOR),
-                ft.ResponsiveRow([reg_name, reg_phone, reg_pass]),
-                ft.Button("Cadastrar", on_click=register_member, width=300, height=45, style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white")),
-                ft.TextButton("Já tenho conta? Entrar", on_click=lambda e: toggle_member_mode("login"))
-            ]
-        else:
-            member_content.controls = [
-                ft.Text("Membros", size=20, weight="bold", color=THEME_COLOR),
-                ft.ResponsiveRow([member_user, member_pass]),
-                ft.Button("Entrar", on_click=attempt_member_login, width=300, height=45, style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white")),
-                ft.Divider(),
-                ft.TextButton("Criar nova conta", on_click=lambda e: toggle_member_mode("register"))
-            ]
-        page.update()
-
-    member_content = ft.Column(
-        spacing=15, horizontal_alignment="center",
-        controls=[
-            ft.Text("Membros", size=20, weight="bold", color=THEME_COLOR),
-            ft.ResponsiveRow([member_user, member_pass]),
-            ft.Button("Entrar", on_click=attempt_member_login, width=300, height=45, style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white")),
-            ft.Divider(),
-            ft.TextButton("Criar nova conta", on_click=lambda e: toggle_member_mode("register"))
-        ]
-    )
-
-    admin_content = ft.Column([
-        ft.Text("Voluntários", size=20, weight="bold", color=THEME_COLOR),
-        ft.ResponsiveRow([admin_user, admin_pass]),
-        ft.Button("Entrar", on_click=attempt_admin_login, width=300, height=45, style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white"))
-    ], horizontal_alignment="center", spacing=15)
-
-    current_content = ft.Container(content=member_content, padding=20)
-    
-    def switch_tab(e):
-        is_member = e.control.data == "member"
-        current_content.content = member_content if is_member else admin_content
-        btn_member.style = ft.ButtonStyle(bgcolor=THEME_COLOR if is_member else "white", color="white" if is_member else THEME_COLOR)
-        btn_admin.style = ft.ButtonStyle(bgcolor=THEME_COLOR if not is_member else "white", color="white" if not is_member else THEME_COLOR)
-        page.update()
-
-    btn_member = ft.Button("Membro", on_click=switch_tab, data="member", style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white"), expand=True)
-    btn_admin = ft.Button("Voluntário", on_click=switch_tab, data="admin", style=ft.ButtonStyle(bgcolor="white", color=THEME_COLOR), expand=True)
-
-    # Container principal responsivo
     return ft.Container(
         content=ft.Column([
             get_logo(100),
-            ft.Text(APP_TITLE, size=18, weight="bold", color="grey", text_align="center"),
-            ft.Divider(height=10, color="transparent"),
-            ft.Container(
-                content=ft.Column([ft.Row([btn_member, btn_admin], spacing=0), current_content]),
-                # Largura máxima 400, mas adaptável se tela for menor
-                width=400,
-                border_radius=10,
-                border=ft.border.all(1, "grey"),
-                clip_behavior=ft.ClipBehavior.HARD_EDGE
-            )
-        ], horizontal_alignment="center", alignment=ft.alignment.center, scroll="auto"),
+            ft.Text(APP_TITLE, size=18, weight="bold", color="grey"),
+            ft.Container(content=ft.Column([
+                ft.Text("Login", size=20, weight="bold", color=THEME_COLOR),
+                ft.ResponsiveRow([user, pwd]),
+                ft.Button("Entrar", on_click=try_login, width=300, style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white"))
+            ], horizontal_alignment="center", spacing=20), padding=20, width=400, border=ft.border.all(1, "grey"), border_radius=10)
+        ], horizontal_alignment="center", alignment=ft.alignment.center),
         padding=10, alignment=ft.alignment.center, expand=True
     )
 
-def visitors_view(page: ft.Page, db: Database, readonly: bool = False, on_back_callback=None):
-    if readonly: return ft.Center(ft.Text("Área restrita a voluntários."))
+def home_view(page, db, readonly=False):
+    # --- 1. Carrossel de Fotos Animado (Multi-itens) ---
+    carousel_photos = db.get_recent_photos(15)
+    if not carousel_photos: carousel_photos = ["https://via.placeholder.com/300x200?text=Bem-vindo"] * 6
+    
+    # Lista de controles que será exibida
+    carousel_row = ft.Row(spacing=10, alignment=ft.MainAxisAlignment.CENTER)
+    current_start_index = [0]
 
-    # Formulário Responsivo
-    name = ft.TextField(label="Nome *", prefix_icon=ft.Icons.PERSON, col=12)
-    phone = ft.TextField(label="WhatsApp", prefix_icon=ft.Icons.PHONE, keyboard_type="phone", col={"sm": 12, "md": 6})
-    email = ft.TextField(label="E-mail", prefix_icon=ft.Icons.EMAIL, col={"sm": 12, "md": 6})
-    obs = ft.TextField(label="Observações", multiline=True, min_lines=2, col=12)
-    addr_component = address_form_fields(page)
+    # --- Função Lightbox (Fullscreen) ---
+    def open_lightbox_home(src):
+        # Cria a imagem em tela cheia
+        img_full = ft.Image(src=src, fit=ft.ImageFit.CONTAIN, width=page.width, height=page.height)
+        
+        stack = ft.Stack([
+            # Fundo preto com clique para fechar
+            ft.Container(bgcolor="black", opacity=0.9, on_click=lambda e: close_lightbox(stack), expand=True),
+            # Imagem centralizada
+            ft.Container(content=img_full, alignment=ft.alignment.center),
+            # Botão fechar (X) no topo
+            ft.Container(
+                content=ft.IconButton(ft.Icons.CLOSE, icon_color="white", icon_size=30, on_click=lambda e: close_lightbox(stack)),
+                top=20, right=20
+            )
+        ], expand=True)
+        
+        page.overlay.append(stack)
+        page.update()
 
-    def save(e):
-        if not name.value:
-            show_warning(page, "Nome é obrigatório!")
-            return
-        loading = show_loading(page, "Salvando...")
-        time.sleep(0.3)
-        if db.add_visitor(name.value, phone.value, email.value, addr_component["get_full_address"](), obs.value):
-            hide_loading(page, loading)
-            show_success(page, "Visitante cadastrado!")
-            # Se tiver callback de voltar (está dentro da lista), volta pra lista
-            if on_back_callback:
-                on_back_callback()
-            else:
-                # Limpa campos se for uso isolado
-                name.value = phone.value = email.value = obs.value = ""
-                for f in [addr_component["cep"], addr_component["logradouro"], addr_component["numero"], addr_component["bairro"], addr_component["cidade"], addr_component["uf"]]: f.value = ""
-                addr_component["status"].value = ""
-                page.update()
-        else:
-            hide_loading(page, loading)
-            show_error(page, "Erro ao salvar.")
-    
-    # Cabeçalho com botão de voltar
-    header_row = ft.Row([
-        ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda e: on_back_callback()) if on_back_callback else ft.Container(),
-        ft.Text("Novo Visitante", size=20, weight="bold")
-    ])
+    def close_lightbox(stack):
+        page.overlay.remove(stack)
+        page.update()
 
-    return ft.ListView([
-        header_row,
-        ft.Divider(),
-        ft.ResponsiveRow([name, phone, email]),
-        ft.Divider(),
-        ft.Text("Endereço", weight="bold"),
-        addr_component["ui"],
-        ft.Divider(),
-        ft.ResponsiveRow([obs]),
-        ft.Container(ft.Button("Salvar Visitante", icon=ft.Icons.SAVE, on_click=save, style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white")), padding=10)
-    ], expand=True, padding=10)
-
-def visitor_edit_view(page: ft.Page, db: Database, visitor_id: int, on_back_callback):
-    visitor_data = db.get_visitor_by_id(visitor_id)
-    if not visitor_data:
-        show_error(page, "Não encontrado!")
-        on_back_callback()
-        return ft.Container()
-    
-    v_id, v_name, v_phone, v_email, v_address, v_date, v_obs = visitor_data
-    
-    def parse_address(address_str):
-        if not address_str: return {"cep": "", "logradouro": "", "numero": "", "bairro": "", "cidade": "", "uf": ""}
-        try:
-            parts = address_str.split(" CEP: ")
-            cep = parts[1] if len(parts) > 1 else ""
-            main = parts[0].split(" - ")
-            bairro_cidade = main[1].split(", ") if len(main) > 1 else ["", ""]
-            logra_num = main[0].split(", ") if len(main) > 0 else ["", ""]
-            cid_uf = bairro_cidade[1].split("/") if len(bairro_cidade) > 1 else ["", ""]
-            return {"cep": cep, "logradouro": logra_num[0], "numero": logra_num[1] if len(logra_num)>1 else "", "bairro": bairro_cidade[0], "cidade": cid_uf[0], "uf": cid_uf[1] if len(cid_uf)>1 else ""}
-        except: return {"cep": "", "logradouro": "", "numero": "", "bairro": "", "cidade": "", "uf": ""}
-    
-    addr = parse_address(v_address)
-    
-    name = ft.TextField(label="Nome *", value=v_name, prefix_icon=ft.Icons.PERSON, col=12)
-    phone = ft.TextField(label="WhatsApp", value=v_phone or "", prefix_icon=ft.Icons.PHONE, col={"sm": 12, "md": 6})
-    email = ft.TextField(label="E-mail", value=v_email or "", prefix_icon=ft.Icons.EMAIL, col={"sm": 12, "md": 6})
-    obs = ft.TextField(label="Observações", value=v_obs or "", multiline=True, col=12)
-    
-    # Endereço Editável Responsivo
-    cep = ft.TextField(label="CEP", value=addr["cep"], col={"sm": 6, "md": 3})
-    status = ft.Text("", size=12, col={"sm": 6, "md": 9})
-    logra = ft.TextField(label="Logradouro", value=addr["logradouro"], col={"sm": 12, "md": 8})
-    num = ft.TextField(label="Nº", value=addr["numero"], col={"sm": 12, "md": 4})
-    bairro = ft.TextField(label="Bairro", value=addr["bairro"], col={"sm": 12, "md": 4})
-    cid = ft.TextField(label="Cidade", value=addr["cidade"], col={"sm": 8, "md": 6})
-    uf = ft.TextField(label="UF", value=addr["uf"], col={"sm": 4, "md": 2})
-
-    def on_cep_change(e):
-        if len(ViaCEPService.clean_cep(cep.value)) < 8: return
-        data = ViaCEPService.search_by_cep(cep.value)
-        if data:
-            logra.value = data.get('logradouro', '')
-            bairro.value = data.get('bairro', '')
-            cid.value = data.get('localidade', '')
-            uf.value = data.get('uf', '')
-            cep.value = ViaCEPService.format_cep(cep.value)
-            page.update()
-
-    cep.on_change = on_cep_change
-    
-    def save_changes(e):
-        if not name.value:
-            show_warning(page, "Nome obrigatório!")
-            return
-        loading = show_loading(page, "Atualizando...")
-        time.sleep(0.3)
-        full_addr = f"{logra.value}, {num.value} - {bairro.value}, {cid.value}/{uf.value} CEP: {cep.value}"
-        if db.update_visitor(visitor_id, name.value, phone.value, email.value, full_addr, obs.value):
-            hide_loading(page, loading)
-            show_success(page, "Atualizado!")
-            on_back_callback()
-        else:
-            hide_loading(page, loading)
-            show_error(page, "Erro ao atualizar.")
-    
-    return ft.ListView([
-        ft.Row([ft.IconButton(icon=ft.Icons.ARROW_BACK, on_click=lambda e: on_back_callback()), ft.Text("Editar", size=20, weight="bold")]),
-        ft.Divider(),
-        ft.ResponsiveRow([name, phone, email]),
-        ft.Divider(),
-        ft.Text("Endereço", weight="bold"),
-        ft.ResponsiveRow([cep, status, logra, num, bairro, cid, uf]),
-        ft.Divider(),
-        ft.ResponsiveRow([obs]),
-        ft.Row([ft.ElevatedButton("Salvar", on_click=save_changes, icon=ft.Icons.SAVE, style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white"))])
-    ], expand=True, padding=10)
-
-def visitors_list_view(page: ft.Page, db: Database, readonly: bool = False, on_edit_visitor=None, on_add_visitor=None):
-    if readonly: return ft.Center(ft.Text("Área restrita."))
-    list_col = ft.Column([], scroll="auto", expand=True)
-    
-    # --- Lógica de Exclusão ---
-    def delete_visitor_click(v_id, v_name):
-        def confirm_delete(e):
-            page.close(dlg)
-            loading = show_loading(page, "Excluindo...")
-            time.sleep(0.3)
+    def update_carousel_view(do_update=True):
+        """Atualiza a lista de fotos visíveis com segurança"""
+        w = page.width if page.width else 800
+        
+        if w < 600: num_visible = 3
+        elif w < 1000: num_visible = 4
+        else: num_visible = 6
+        
+        spacing = 10
+        total_spacing = (num_visible - 1) * spacing
+        available_width = w - 40 
+        img_width = (available_width - total_spacing) / num_visible
+        
+        visible_images = []
+        for i in range(num_visible):
+            idx = (current_start_index[0] + i) % len(carousel_photos)
+            src = carousel_photos[idx]
             
-            if db.delete_visitor(v_id):
-                hide_loading(page, loading)
-                show_success(page, f"Visitante '{v_name}' excluído!")
-                refresh_list() # Recarrega a lista
-            else:
-                hide_loading(page, loading)
-                show_error(page, "Erro ao excluir visitante.")
+            img = ft.Image(
+                src=src,
+                height=160,
+                width=img_width,
+                fit=ft.ImageFit.COVER,
+                border_radius=8,
+                gapless_playback=True,
+                animate_size=300
+            )
+            
+            # Container clicável para abrir o Lightbox
+            container = ft.Container(
+                content=img,
+                on_click=lambda e, s=src: open_lightbox_home(s), # Passa o 'src' correto usando default arg
+                ink=True, # Efeito visual de clique
+                border_radius=8
+            )
+            
+            visible_images.append(container)
+            
+        carousel_row.controls = visible_images
+        
+        if do_update:
+            try:
+                if carousel_row.page:
+                    carousel_row.update()
+            except: pass
 
-        dlg = ft.AlertDialog(
-            title=ft.Text("Confirmar Exclusão"),
-            content=ft.Text(f"Tem certeza que deseja apagar o visitante '{v_name}'?"),
-            actions=[
-                ft.TextButton("Cancelar", on_click=lambda e: page.close(dlg)),
-                ft.TextButton("Excluir", on_click=confirm_delete, style=ft.ButtonStyle(color="red"))
-            ]
-        )
+    def cycle_carousel():
+        while True:
+            time.sleep(4)
+            try:
+                current_start_index[0] = (current_start_index[0] + 1) % len(carousel_photos)
+                update_carousel_view(do_update=True)
+            except: break
+
+    update_carousel_view(do_update=False)
+
+    if len(carousel_photos) > 1:
+        threading.Thread(target=cycle_carousel, daemon=True).start()
+
+    # --- YouTube Dinâmico ---
+    clean_id = YOUTUBE_CHANNEL_ID.strip().replace('"', '').replace("'", "") if YOUTUBE_CHANNEL_ID else ""
+    thumb_src = get_youtube_thumbnail(clean_id)
+    if not thumb_src: thumb_src = "https://img.youtube.com/vi/AKw0E0t2k6c/maxresdefault.jpg"
+    
+    live_url = f"https://www.youtube.com/channel/{clean_id}/live" if clean_id else "https://www.youtube.com/"
+    streams_url = f"https://www.youtube.com/channel/{clean_id}/streams" if clean_id else "https://www.youtube.com/"
+
+    btn_live = ft.Container(content=ft.IconButton(ft.Icons.PLAY_CIRCLE_FILL, icon_color="red", icon_size=60, tooltip="Assistir Agora", on_click=lambda e: page.launch_url(live_url)), alignment=ft.alignment.center)
+    btn_all_streams = ft.TextButton("Ver Cultos Anteriores", icon=ft.Icons.VIDEO_LIBRARY, on_click=lambda e: page.launch_url(streams_url), style=ft.ButtonStyle(color=THEME_COLOR))
+
+    yt_card = ft.Card(content=ft.Container(content=ft.Column([
+        ft.Row([ft.Icon(ft.Icons.LIVE_TV, color="red"), ft.Text("Transmissões da Igreja", size=16, weight="bold", color="red")]),
+        ft.Stack([ft.Image(src=thumb_src, width=float("inf"), height=200, fit=ft.ImageFit.COVER, border_radius=8), ft.Container(bgcolor="black54", width=float("inf"), height=200, border_radius=8), btn_live, ft.Container(content=ft.Text("Clique para assistir ao vivo", color="white", size=12), bottom=10, right=10)], height=200),
+        ft.Row([btn_all_streams], alignment=ft.MainAxisAlignment.END)
+    ], spacing=10), padding=15), elevation=5)
+
+    # --- Agenda ---
+    agenda_col = ft.Column([], spacing=10)
+    def refresh_agenda():
+        events = db.get_upcoming_events()
+        agenda_col.controls.clear()
+        if not events: agenda_col.controls.append(ft.Text("Sem eventos próximos.", italic=True))
+        for ev in events:
+            d = datetime.strptime(ev['event_date'], "%Y-%m-%d")
+            card = ft.Card(content=ft.Container(content=ft.Row([
+                ft.Container(content=ft.Column([ft.Text(str(d.day), size=24, weight="bold", color="white"), ft.Text(d.strftime("%b").upper(), size=12, color="white")], alignment="center", spacing=0), bgcolor=THEME_COLOR, width=60, height=60, border_radius=8, alignment=ft.alignment.center),
+                ft.Column([ft.Text(ev['title'], weight="bold"), ft.Text(f"{ev['event_time']} - {ev['location']}", size=12, color="grey"), ft.Text(ev['description'], size=12, italic=True)], expand=True),
+                ft.IconButton(ft.Icons.DELETE, icon_color="red", on_click=lambda e, x=ev['id']: (db.delete_event(x), refresh_agenda(), show_success(page, "Removido!"))) if not readonly else ft.Container()
+            ]), padding=10))
+            agenda_col.controls.append(card)
+        page.update()
+
+    def add_ev_dialog(e):
+        t, d, dt, tm, l = ft.TextField(label="Título"), ft.TextField(label="Desc"), ft.TextField(label="Data AAAA-MM-DD", value=datetime.now().strftime("%Y-%m-%d")), ft.TextField(label="Hora", value="19:30"), ft.TextField(label="Local", value="Igreja")
+        def save(e):
+            if db.add_event(t.value, d.value, dt.value, tm.value, l.value): page.close(dlg); refresh_agenda(); show_success(page, "Adicionado!")
+            else: show_error(page, "Erro.")
+        dlg = ft.AlertDialog(title=ft.Text("Novo Evento"), content=ft.Column([t, d, dt, tm, l], height=300), actions=[ft.TextButton("Cancelar", on_click=lambda e: page.close(dlg)), ft.TextButton("Salvar", on_click=save)])
         page.open(dlg)
 
-    # --- Carregamento da Lista ---
-    def refresh_list(e=None):
+    refresh_agenda()
+    
+    return ft.ListView([
+        ft.Text("Bem-vindo à IEQ", size=24, weight="bold", color=THEME_COLOR),
+        ft.Container(content=carousel_row, height=160), 
+        ft.Divider(),
+        yt_card, ft.Divider(),
+        ft.Row([ft.Text("Agenda", size=20, weight="bold"), ft.IconButton(ft.Icons.ADD_CIRCLE, icon_color=THEME_COLOR, on_click=add_ev_dialog) if not readonly else ft.Container()], alignment="spaceBetween"),
+        agenda_col
+    ], padding=10, spacing=20)
+
+def visitors_view(page, db, readonly=False, on_back_callback=None):
+    if readonly: return ft.Center(ft.Text("Restrito"))
+    n = ft.TextField(label="Nome Completo *", prefix_icon=ft.Icons.PERSON, col=12)
+    p = ft.TextField(label="WhatsApp / Telefone", prefix_icon=ft.Icons.PHONE, keyboard_type="phone", col={"sm":12,"md":6})
+    em = ft.TextField(label="E-mail", prefix_icon=ft.Icons.EMAIL, col={"sm":12,"md":6})
+    obs = ft.TextField(label="Observações", multiline=True, min_lines=3, col=12)
+    addr = address_form_fields(page)
+    def save(e):
+        if not n.value: show_warning(page, "Nome obrigatório!"); return
+        loading = show_loading(page, "Salvando...")
+        time.sleep(0.3)
+        if db.add_visitor(n.value, p.value, em.value, addr["get_full_address"](), obs.value):
+            hide_loading(page, loading); show_success(page, "Salvo!"); 
+            if on_back_callback: on_back_callback()
+            else: n.value=""; p.value=""; em.value=""; obs.value=""; addr["cep"].value=""; addr["logradouro"].value=""; page.update()
+        else: hide_loading(page, loading); show_error(page, "Erro.")
+    header = ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda e: on_back_callback()) if on_back_callback else ft.Container(), ft.Text("Novo Visitante", size=20, weight="bold")])
+    return ft.Container(content=ft.Column([header, ft.Divider(), ft.ResponsiveRow([n, p, em], spacing=20), ft.Text("Endereço", weight="bold"), addr["ui"], ft.Divider(), ft.ResponsiveRow([obs]), ft.Container(ft.Button("Salvar Visitante", icon=ft.Icons.SAVE, on_click=save, style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white"), height=50, width=200), alignment=ft.alignment.center, padding=20)], scroll="auto", spacing=10), padding=20, expand=True)
+
+def visitor_edit_view(page, db, vid, back_cb):
+    v = db.get_visitor_by_id(vid)
+    if not v: show_error(page, "Não achado"); back_cb(); return ft.Container()
+    parts = v[4].split(" CEP: ") if v[4] else ["",""]; main = parts[0].split(" - ") if parts[0] else ["",""]; l_n = main[0].split(", ") if main[0] else ["",""]; b_c = main[1].split(", ") if len(main)>1 else ["",""]; c_u = b_c[1].split("/") if len(b_c)>1 else ["",""]
+    n, p, em, obs = ft.TextField(label="Nome", value=v[1], col=12), ft.TextField(label="Zap", value=v[2], col=6), ft.TextField(label="Email", value=v[3], col=6), ft.TextField(label="Obs", value=v[6], multiline=True, col=12)
+    cep, log, num = ft.TextField(label="CEP", value=parts[1] if len(parts)>1 else "", col=4), ft.TextField(label="Rua", value=l_n[0], col=8), ft.TextField(label="Nº", value=l_n[1] if len(l_n)>1 else "", col=4)
+    bai, cid, uf = ft.TextField(label="Bairro", value=b_c[0], col=4), ft.TextField(label="Cidade", value=c_u[0], col=6), ft.TextField(label="UF", value=c_u[1] if len(c_u)>1 else "", col=2)
+    def save(e):
+        addr_full = f"{log.value}, {num.value} - {bai.value}, {cid.value}/{uf.value} CEP: {cep.value}"
+        if db.update_visitor(vid, n.value, p.value, em.value, addr_full, obs.value): show_success(page, "Atualizado!"); back_cb()
+        else: show_error(page, "Erro")
+    return ft.ListView([ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda e: back_cb()), ft.Text("Editar", size=20, weight="bold")]), ft.ResponsiveRow([n,p,em]), ft.ResponsiveRow([cep,log,num,bai,cid,uf]), ft.ResponsiveRow([obs]), ft.Button("Salvar", on_click=save)], padding=10)
+
+def visitors_list_view(page, db, readonly=False, on_edit_visitor=None, on_add_visitor=None):
+    if readonly: return ft.Center(ft.Text("Restrito"))
+    col = ft.Column([], scroll="auto", expand=True)
+    def delete_v(vid, name):
+        def conf(e):
+            if db.delete_visitor(vid): page.close(dlg); show_success(page, "Deletado!"); refresh()
+        dlg = ft.AlertDialog(title=ft.Text("Excluir?"), content=ft.Text(f"Apagar {name}?"), actions=[ft.TextButton("Não", on_click=lambda e: page.close(dlg)), ft.TextButton("Sim", on_click=conf)])
+        page.open(dlg)
+    def refresh(e=None):
         items = db.get_all_visitors()
-        list_controls = []
-        if not items:
-            list_controls.append(ft.Container(content=ft.Column([ft.Icon(ft.Icons.PERSON_REMOVE, size=50, color="grey"), ft.Text("Nenhum visitante.", color="grey")], horizontal_alignment="center"), padding=20))
-        
+        col.controls = []
+        if not items: col.controls.append(ft.Text("Nenhum visitante", italic=True))
         for v in items:
-            v_id, v_name, v_phone, _, _, v_date, _ = v
-            
-            # Botões de Ação
             btns = []
-            
-            # 1. Botão WhatsApp
-            if v_phone:
-                btns.append(ft.IconButton(icon=ft.Icons.MESSAGE, icon_color="green", tooltip="WhatsApp", url=open_whatsapp(v_phone, v_name)))
-            
-            # 2. Botão Editar
-            if on_edit_visitor:
-                btns.append(ft.IconButton(icon=ft.Icons.EDIT, icon_color=THEME_COLOR, tooltip="Editar", data=v_id, on_click=lambda e: on_edit_visitor(e.control.data)))
-            
-            # 3. Botão Deletar (NOVO)
-            if not readonly:
-                btns.append(ft.IconButton(
-                    icon=ft.Icons.DELETE, 
-                    icon_color="red", 
-                    tooltip="Excluir", 
-                    on_click=lambda e, x=v_id, n=v_name: delete_visitor_click(x, n)
-                ))
-
-            # Card do Visitante
-            list_controls.append(
-                ft.Card(ft.Container(
-                    content=ft.Row([
-                        ft.Icon(ft.Icons.PERSON, color=THEME_COLOR, size=30),
-                        ft.Column([
-                            ft.Text(v_name, weight="bold"), 
-                            ft.Text(f"{v_date}", size=12, color="grey")
-                        ], expand=True),
-                        ft.Row(btns, spacing=0) # Barra de botões alinhada à direita
-                    ]), padding=10
-                ))
-            )
-        list_col.controls = list_controls
+            if v[2]: btns.append(ft.IconButton(ft.Icons.MESSAGE, icon_color="green", url=open_whatsapp(v[2], v[1])))
+            if on_edit_visitor: btns.append(ft.IconButton(ft.Icons.EDIT, icon_color=THEME_COLOR, on_click=lambda e, x=v[0]: on_edit_visitor(x)))
+            if not readonly: btns.append(ft.IconButton(ft.Icons.DELETE, icon_color="red", on_click=lambda e, x=v[0], n=v[1]: delete_v(x, n)))
+            col.controls.append(ft.Card(ft.Container(ft.Row([ft.Icon(ft.Icons.PERSON, color=THEME_COLOR), ft.Column([ft.Text(v[1], weight="bold"), ft.Text(v[5], size=12, color="grey")], expand=True), ft.Row(btns)], alignment="spaceBetween"), padding=10)))
         page.update()
-    
-    refresh_list()
-    
-    # Cabeçalho
-    header_controls = [ft.Text("Visitantes", size=20, weight="bold")]
-    if not readonly and on_add_visitor:
-        header_controls.append(
-            ft.IconButton(ft.Icons.ADD, on_click=lambda e: on_add_visitor(), bgcolor=THEME_COLOR, icon_color="white", tooltip="Novo Visitante")
-        )
-    elif not readonly:
-         header_controls.append(ft.IconButton(ft.Icons.REFRESH, on_click=refresh_list))
+    refresh()
+    header = [ft.Text("Visitantes", size=20, weight="bold")]
+    if on_add_visitor: header.append(ft.IconButton(ft.Icons.ADD, bgcolor=THEME_COLOR, icon_color="white", on_click=lambda e: on_add_visitor()))
+    return ft.Container(ft.Column([ft.Row(header, alignment="spaceBetween"), ft.Divider(), col], expand=True), padding=10, expand=True)
 
-    return ft.Container(
-        content=ft.Column([
-            ft.Row(header_controls, alignment="spaceBetween"), 
-            ft.Divider(), 
-            list_col
-        ], expand=True), 
-        padding=10, expand=True
-    )
-    
-def volunteers_view(page: ft.Page, db: Database, readonly: bool = False):
-    current_view = ft.Ref[ft.Column]()
-    
-    name = ft.TextField(label="Nome *", col=12)
-    role = ft.TextField(label="Cargo *", col={"sm": 12, "md": 6})
-    dept = ft.Dropdown(label="Departamento", options=[ft.dropdown.Option(x) for x in ["Pastor(a)", "Adm", "Louvor", "Infantil", "Mídia", "Diácono"]], col={"sm": 12, "md": 6})
-    phone = ft.TextField(label="Tel", col={"sm": 12, "md": 4})
-    email = ft.TextField(label="Email", col={"sm": 12, "md": 4})
-    hire_date = ft.TextField(label="Data", value=datetime.now().strftime("%d/%m/%Y"), col={"sm": 12, "md": 4})
-    addr_component = address_form_fields(page)
-    obs = ft.TextField(label="Obs", multiline=True, col=12)
-
-    def show_list(e=None):
-        items = db.get_all_volunteers()
-        list_controls = []
-        for i in items:
-            c_id, c_name, _, _, _, c_role, c_dept = i[0], i[1], i[2], i[3], i[4], i[5], i[6]
-            trailing = ft.IconButton(ft.Icons.DELETE, icon_color="red", on_click=lambda e, x=c_id: delete_collab(x)) if not readonly else None
-            list_controls.append(ft.Card(ft.ListTile(leading=ft.Icon(ft.Icons.BADGE, color=THEME_COLOR), title=ft.Text(c_name, weight="bold"), subtitle=ft.Text(f"{c_role} - {c_dept}"), trailing=trailing)))
-        
-        header = [ft.Text("Equipe", size=20, weight="bold")]
-        if not readonly: header.append(ft.IconButton(ft.Icons.ADD, on_click=show_form, bgcolor=THEME_COLOR, icon_color="white"))
-        
-        content = ft.Column([ft.Row(header, alignment="spaceBetween"), ft.Divider(), ft.Column(list_controls, scroll="auto", expand=True)], expand=True)
-        current_view.current.controls = [content]
-        page.update()
-
-    def delete_collab(id):
-        if db.deactivate_collaborator(id): show_success(page, "Desativado!"); show_list()
-        else: show_error(page, "Erro.")
-
-    def save(e):
-        if not name.value or not role.value: show_warning(page, "Preencha Nome e Cargo!"); return
-        if db.add_collaborator(name.value, phone.value, email.value, addr_component["get_full_address"](), role.value, dept.value, hire_date.value, obs.value): show_success(page, "Salvo!"); show_list()
-        else: show_error(page, "Erro.")
-
-    def show_form(e=None):
-        content = ft.Column([
-            ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=show_list), ft.Text("Novo", size=20, weight="bold")]),
-            ft.ResponsiveRow([name, role, dept, phone, email, hire_date]),
-            ft.Divider(), addr_component["ui"], ft.ResponsiveRow([obs]),
-            ft.Button("Salvar", on_click=save, style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white"))
-        ], scroll="auto", expand=True)
-        current_view.current.controls = [content]
-        page.update()
-
-    col = ft.Column(expand=True, ref=current_view)
-    show_list()
-    return col
-
-def cells_view(page: ft.Page, db: Database, readonly: bool = False):
-    current_view = ft.Ref[ft.Column]()
-    name = ft.TextField(label="Nome Célula *", col=12)
-    leader = ft.TextField(label="Líder *", prefix_icon=ft.Icons.PERSON, col={"sm": 12, "md": 6})
-    host = ft.TextField(label="Anfitrião", prefix_icon=ft.Icons.HOME, col={"sm": 12, "md": 6})
-    day = ft.Dropdown(label="Dia", options=[ft.dropdown.Option(x) for x in ["Seg", "Ter", "Qua", "Qui", "Sex", "Sab", "Dom"]], col={"sm": 6, "md": 4})
-    time_f = ft.TextField(label="Horário", value="20:00", col={"sm": 6, "md": 4})
-    addr_component = address_form_fields(page)
-    obs = ft.TextField(label="Obs", col=12)
-
-    def show_list(e=None):
+def cells_view(page, db, readonly=False):
+    view = ft.Ref[ft.Column]()
+    filter_dd = ft.Dropdown(width=130, label="Exibir", value="Todas", text_size=14, content_padding=10, options=[ft.dropdown.Option("Todas"), ft.dropdown.Option("Ativas"), ft.dropdown.Option("Inativas")], on_change=lambda e: show_list(), visible=not readonly)
+    def open_google_maps(address):
+        if not address: show_warning(page, "Endereço não cadastrado."); return
+        page.launch_url(f"https://www.google.com/maps/search/?api=1&query={urllib.parse.quote(address)}")
+    def confirm_hard_delete(cid, cname):
+        def delete(e):
+            page.close(dlg)
+            if db.delete_cell_permanent(cid): show_success(page, "Registro apagado!"); show_list()
+            else: show_error(page, "Erro.")
+        dlg = ft.AlertDialog(title=ft.Text("Exclusão Permanente"), content=ft.Text(f"Apagar '{cname}' do banco?"), actions=[ft.TextButton("Cancelar", on_click=lambda e: page.close(dlg)), ft.TextButton("Apagar", on_click=delete, style=ft.ButtonStyle(color="red"))]); page.open(dlg)
+    def show_list():
         items = db.get_all_cells()
-        list_controls = []
+        current_filter = filter_dd.value
+        filtered_items = []
         for c in items:
-            c_id, c_name, c_lead, c_day, c_time = c[0], c[1], c[2], c[5], c[6]
-            trailing = ft.IconButton(ft.Icons.DELETE, icon_color="red", on_click=lambda e, x=c_id: delete(x)) if not readonly else None
-            list_controls.append(ft.Card(ft.ListTile(leading=ft.Icon(ft.Icons.GROUPS, color=THEME_COLOR), title=ft.Text(c_name, weight="bold"), subtitle=ft.Text(f"Líder: {c_lead}\n{c_day} às {c_time}"), trailing=trailing)))
+            c_active = c[8]
+            if readonly:
+                if c_active: filtered_items.append(c)
+            else:
+                if current_filter == "Todas": filtered_items.append(c)
+                elif current_filter == "Ativas" and c_active: filtered_items.append(c)
+                elif current_filter == "Inativas" and not c_active: filtered_items.append(c)
         
-        header = [ft.Text("Células", size=20, weight="bold")]
-        if not readonly: header.append(ft.IconButton(ft.Icons.ADD, on_click=show_form, bgcolor=THEME_COLOR, icon_color="white"))
-        content = ft.Column([ft.Row(header, alignment="spaceBetween"), ft.Divider(), ft.Column(list_controls, scroll="auto", expand=True)], expand=True)
-        current_view.current.controls = [content]
+        if not filtered_items: content = ft.Text("Nenhum registro.", color="grey")
+        else:
+            cell_cards = []
+            for c in filtered_items:
+                c_id, c_name, c_leader, c_host, c_address, c_day, c_time, c_obs, c_active = c
+                card_bg = THEME_COLOR if c_active else ft.colors.GREY_700
+                status_icon = ft.Icons.HOME_FILLED if c_active else ft.Icons.HOME_WORK_OUTLINED
+                opacity = 1.0 if c_active else 0.8
+                admin_actions = ft.Container()
+                if not readonly:
+                    if c_active: admin_actions = ft.IconButton(ft.Icons.DELETE, icon_color="red", tooltip="Desativar", on_click=lambda e, x=c_id: (db.deactivate_cell(x), show_list()))
+                    else: admin_actions = ft.Row([ft.IconButton(ft.Icons.RESTORE, icon_color="green", tooltip="Reativar", on_click=lambda e, x=c_id: (db.activate_cell(x), show_list())), ft.IconButton(ft.Icons.DELETE_FOREVER, icon_color="red", tooltip="Excluir", on_click=lambda e, x=c_id, n=c_name: confirm_hard_delete(x, n))], spacing=0)
+                
+                card = ft.Card(content=ft.Container(content=ft.Column([
+                    ft.Container(content=ft.Column([ft.Icon(status_icon, size=40, color="white"), ft.Text(c_day.upper(), weight="bold", color="white", size=12), ft.Text(c_time, weight="bold", color="white", size=20), ft.Text("INATIVA" if not c_active else "", color="white", size=10, weight="bold")], horizontal_alignment="center", spacing=2), bgcolor=card_bg, height=130, alignment=ft.alignment.center, border_radius=ft.border_radius.only(top_left=10, top_right=10), clip_behavior=ft.ClipBehavior.HARD_EDGE),
+                    ft.Container(content=ft.Column([
+                        ft.Text(c_name, weight="bold", size=18, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS), ft.Divider(height=10, color="transparent"),
+                        ft.Row([ft.Icon(ft.Icons.PERSON, size=16, color="grey"), ft.Text(f"Líder: {c_leader}", size=13, color="grey", expand=True)]),
+                        ft.Row([ft.Icon(ft.Icons.REAL_ESTATE_AGENT, size=16, color="grey"), ft.Text(f"Anfitrião: {c_host}", size=13, color="grey", expand=True)]),
+                        ft.Row([ft.Icon(ft.Icons.LOCATION_ON, size=16, color="red"), ft.Text(c_address if c_address else "Sem endereço", size=12, color="grey", expand=True, no_wrap=True)]) if c_address else ft.Container(),
+                        ft.Divider(),
+                        ft.Row([ft.ElevatedButton("Abrir Mapa", icon=ft.Icons.MAP, icon_color="white", bgcolor="green", color="white", style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8)), on_click=lambda e, addr=c_address: open_google_maps(addr), visible=bool(c_address)), admin_actions], alignment="spaceBetween")
+                    ], spacing=5), padding=15)
+                ], spacing=0), opacity=opacity), col={"sm": 12, "md": 6, "lg": 4, "xl": 3}, elevation=4)
+                cell_cards.append(card)
+            content = ft.ResponsiveRow(cell_cards)
+        
+        view.current.controls = [ft.Row([ft.Text("Casas de Cornélio", size=24, weight="bold", color=THEME_COLOR), ft.Row([filter_dd, ft.IconButton(ft.Icons.ADD, on_click=show_form, bgcolor=THEME_COLOR, icon_color="white") if not readonly else ft.Container()], spacing=5)], alignment="spaceBetween"), ft.Divider(), ft.Column([content], scroll="auto", expand=True)]
         page.update()
 
-    def delete(id):
-        if db.deactivate_cell(id): show_success(page, "Desativada!"); show_list()
-        else: show_error(page, "Erro.")
-
-    def save(e):
-        if not name.value or not leader.value: show_warning(page, "Preencha Nome e Líder!"); return
-        if db.add_cell(name.value, leader.value, host.value, addr_component["get_full_address"](), day.value, time_f.value, obs.value): show_success(page, "Salvo!"); show_list()
-        else: show_error(page, "Erro.")
-
-    def show_form(e=None):
-        content = ft.Column([
-            ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=show_list), ft.Text("Nova Célula", size=20, weight="bold")]),
-            ft.ResponsiveRow([name, leader, host, day, time_f]),
-            ft.Divider(), addr_component["ui"], ft.ResponsiveRow([obs]),
-            ft.Button("Salvar", on_click=save, style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white"))
-        ], scroll="auto", expand=True)
-        current_view.current.controls = [content]
+    def show_form(e):
+        n,l,h,t,o = ft.TextField(label="Nome *", col=12), ft.TextField(label="Líder *", col={"sm":12,"md":6}), ft.TextField(label="Anfitrião", col={"sm":12,"md":6}), ft.TextField(label="Horário", col={"sm":12,"md":6}), ft.TextField(label="Obs", multiline=True, col=12)
+        d = ft.Dropdown(label="Dia", options=[ft.dropdown.Option(x) for x in ["Segunda-feira","Terça-feira","Quarta-feira","Quinta-feira","Sexta-feira","Sábado","Domingo"]], col={"sm":12,"md":6})
+        addr = address_form_fields(page)
+        def save(e):
+            if not n.value or not l.value: show_warning(page, "Preencha Nome e Líder!"); return
+            if db.add_cell(n.value, l.value, h.value, addr["get_full_address"](), d.value, t.value, o.value): show_success(page, "Salvo!"); show_list()
+            else: show_error(page, "Erro.")
+        view.current.controls = [ft.Column([ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda e: show_list()), ft.Text("Nova Casa", size=20, weight="bold")]), ft.Divider(), ft.ResponsiveRow([n,l,h,d,t]), ft.Text("Endereço", weight="bold"), addr["ui"], ft.Divider(), ft.ResponsiveRow([o]), ft.Container(ft.Button("Salvar", on_click=save, style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white")), padding=10)], scroll="auto", expand=True)]
         page.update()
+    col = ft.Column(expand=True, ref=view); show_list(); return col
 
-    col = ft.Column(expand=True, ref=current_view)
-    show_list()
-    return col
-
-def users_view(page: ft.Page, db: Database, readonly: bool = False):
+def users_view(page, db, readonly=False):
     if readonly: return ft.Center(ft.Text("Negado"))
-    current_view = ft.Ref[ft.Column]()
-    u_name = ft.TextField(label="User", col=12)
-    u_pass = ft.TextField(label="Senha", password=True, col=12)
-    u_admin = ft.Checkbox(label="Admin", col=12)
-    p_visit = ft.Checkbox(label="Visitantes", value=True, col=4)
-    p_cell = ft.Checkbox(label="Células", col=4)
-    p_collab = ft.Checkbox(label="Equipe", col=4)
+    view = ft.Ref[ft.Column]()
+    def show_list():
+        items = db.get_all_users()
+        lst = []
+        for u in items:
+            title = u[2] if u[2] else u[1]; sub = f"Login: {u[1]}" + (f" • {u[3]}" if u[3] else "")
+            acts = [ft.IconButton(ft.Icons.EDIT, icon_color=THEME_COLOR, on_click=lambda e, x=u[0]: show_edit(x)), ft.IconButton(ft.Icons.DELETE, disabled=u[0]==1, on_click=lambda e,x=u[0]:(db.delete_user(x), show_list()))]
+            lst.append(ft.ListTile(title=ft.Text(title, weight="bold"), subtitle=ft.Text(sub, size=12), leading=ft.Icon(ft.Icons.ADMIN_PANEL_SETTINGS if u[4] else ft.Icons.PERSON), trailing=ft.Row(acts, alignment=ft.MainAxisAlignment.END, spacing=0, width=100)))
+        view.current.controls = [ft.Row([ft.Text("Usuários", size=20), ft.IconButton(ft.Icons.ADD, on_click=show_form)], alignment="spaceBetween"), ft.Column(lst, scroll="auto", expand=True)]; page.update()
+    
+    def show_form(e):
+        fn, em, ph, u, p = ft.TextField(label="Nome *", col=12), ft.TextField(label="Email", col=6), ft.TextField(label="Tel", col=6), ft.TextField(label="Login *", col=6), ft.TextField(label="Senha *", password=True, col=6)
+        adm, v, c, g = ft.Checkbox(label="Admin", col=12), ft.Checkbox(label="Visitantes", col=12), ft.Checkbox(label="Casas", col=12), ft.Checkbox(label="Galeria", col=12)
+        def save(e):
+            if db.add_user(u.value, p.value, adm.value, {"visitantes":v.value,"celulas":c.value,"galeria":g.value}, fn.value, em.value, ph.value): show_list(); show_success(page, "Criado!")
+            else: show_error(page, "Erro.")
+        view.current.controls = [ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda e: show_list()), ft.Text("Novo")]), ft.Column([ft.ResponsiveRow([fn,em,ph,u,p,adm]), ft.Divider(), ft.Text("Permissões:"), ft.ResponsiveRow([v,c,g]), ft.Button("Criar", on_click=save, style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white"))], scroll="auto")]; page.update()
 
-    def show_list(e=None):
-        users = db.get_all_users()
-        controls = []
-        for u in users:
-            uid, uname, is_admin = u[0], u[1], u[2]
-            controls.append(ft.ListTile(leading=ft.Icon(ft.Icons.ADMIN_PANEL_SETTINGS if is_admin else ft.Icons.PERSON), title=ft.Text(uname), trailing=ft.IconButton(ft.Icons.DELETE, disabled=(uid==1), on_click=lambda e, x=uid: delete(x))))
-        
-        content = ft.Column([
-            ft.Row([ft.Text("Usuários", size=20, weight="bold"), ft.IconButton(ft.Icons.ADD, on_click=show_form, bgcolor=THEME_COLOR, icon_color="white")], alignment="spaceBetween"),
-            ft.Divider(), ft.Column(controls, scroll="auto", expand=True)
-        ], expand=True)
-        current_view.current.controls = [content]
-        page.update()
+    def show_edit(uid):
+        ud = db.get_user_by_id(uid)
+        if not ud: return
+        fn, em, ph, u, p = ft.TextField(label="Nome", value=ud['full_name'], col=12), ft.TextField(label="Email", value=ud['email'], col=6), ft.TextField(label="Tel", value=ud['phone'], col=6), ft.TextField(label="Login", value=ud['username'], col=6), ft.TextField(label="Senha (vazio=manter)", password=True, col=6)
+        adm = ft.Checkbox(label="Admin", value=ud['is_admin'], col=12)
+        perms = ud['permissions'] if isinstance(ud['permissions'], dict) else json.loads(ud['permissions'] or '{}')
+        v, c, g = ft.Checkbox(label="Visitantes", value=perms.get('visitantes'), col=12), ft.Checkbox(label="Casas", value=perms.get('celulas'), col=12), ft.Checkbox(label="Galeria", value=perms.get('galeria'), col=12)
+        def upd(e):
+            if db.update_user(uid, u.value, p.value, adm.value, {"visitantes":v.value,"celulas":c.value,"galeria":g.value}, fn.value, em.value, ph.value): show_list(); show_success(page, "Atualizado!")
+            else: show_error(page, "Erro.")
+        view.current.controls = [ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda e: show_list()), ft.Text("Editar")]), ft.Column([ft.ResponsiveRow([fn,em,ph,u,p,adm]), ft.Divider(), ft.Text("Permissões:"), ft.ResponsiveRow([v,c,g]), ft.Button("Salvar", on_click=upd, style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white"))], scroll="auto")]; page.update()
 
-    def delete(id):
-        if db.delete_user(id): show_success(page, "Deletado!"); show_list()
-        else: show_error(page, "Erro.")
-
-    def save(e):
-        if not u_name.value or not u_pass.value: show_warning(page, "Preencha tudo!"); return
-        perms = {"visitantes": p_visit.value, "celulas": p_cell.value, "voluntários": p_collab.value}
-        if db.add_user(u_name.value, u_pass.value, u_admin.value, perms): show_success(page, "Criado!"); show_list()
-        else: show_error(page, "Erro.")
-
-    def show_form(e=None):
-        content = ft.Column([
-            ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=show_list), ft.Text("Novo User")]),
-            ft.ResponsiveRow([u_name, u_pass, u_admin]),
-            ft.Text("Permissões:"), ft.ResponsiveRow([p_visit, p_cell, p_collab]),
-            ft.Button("Criar", on_click=save, bgcolor=THEME_COLOR, color="white")
-        ], scroll="auto")
-        current_view.current.controls = [content]
-        page.update()
-
-    col = ft.Column(expand=True, ref=current_view)
-    show_list()
-    return col
+    col = ft.Column(expand=True, ref=view); show_list(); return col
 
 # ==============================================================================
-# MAIN APP LOGIC - RESPONSIVIDADE TOTAL
+# MAIN
 # ==============================================================================
 
 def main(page: ft.Page):
     page.title = APP_TITLE
     page.theme = ft.Theme(color_scheme_seed=THEME_COLOR)
-    # Configuração responsiva inicial
-    page.padding = 0 
-    
+    page.padding = 0
     db = Database()
-    current_user = {"username": None, "permissions": {}, "readonly": False}
-    
+    user_state = {"user": None, "perms": {}, "readonly": False}
+
     def logout(e=None):
-        current_user["username"] = None
+        user_state["user"] = None
         page.clean()
-        page.add(login_view(page, db, login_success))
+        page.add(login_view(page, db, on_login_success))
         page.update()
 
-    def login_success(username):
-        current_user["username"] = username
+    def on_login_success(username):
+        user_state["user"] = username
         perms = db.get_user_permissions(username)
-        current_user["permissions"] = perms
-        current_user["readonly"] = perms.get("readonly", False)
-        show_dashboard()
+        user_state["perms"] = perms
+        user_state["readonly"] = perms.get("readonly", False)
+        dashboard()
 
-    def show_dashboard():
+    def dashboard():
         page.clean()
+        content = ft.Container(expand=True, padding=10)
         
-        # Área de conteúdo central
-        content_area = ft.Container(expand=True, padding=10)
-        
-        # Itens de navegação (usados tanto no Rail quanto no Drawer)
-        destinations = []
-        pages_map = []
-        perms = current_user["permissions"]
-        
-        # Mapa de navegação
-        # NOTA: Removi o "Cadastro Visitante" (visitors_view) daqui pois ele agora é acessado pela lista
-        nav_items = [
-            ("lista_visitantes", ft.Icons.PEOPLE, "Visitantes", visitors_list_view), # Mudei icone e nome
-            ("celulas", ft.Icons.GROUPS, "Células", cells_view),
-            ("voluntários", ft.Icons.BADGE, "Equipe", volunteers_view),
-            ("galeria", ft.Icons.PHOTO_LIBRARY, "Galeria", lambda p, d, readonly: gallery_view(
-                p, d, current_user, show_success, show_error, show_warning, show_loading, hide_loading, readonly
-            )),
+        menu_data = [
+            ("home", ft.Icons.HOME, "Início", home_view),
+            ("lista_visitantes", ft.Icons.PEOPLE, "Visitantes", visitors_list_view),
+            ("celulas", ft.Icons.GROUPS, "Casas de Cornélio", cells_view),
+            ("galeria", ft.Icons.PHOTO_LIBRARY, "Galeria", lambda p, d, ro: gallery_view(p, d, user_state, show_success, show_error, show_warning, show_loading, hide_loading, ro)),
             ("usuarios", ft.Icons.SECURITY, "Usuários", users_view)
         ]
-
-        for perm_key, icon, label, func in nav_items:
-            # Verifica se tem permissão (usa 'visitantes' para a lista agora)
-            if perms.get(perm_key) or (perm_key == "lista_visitantes" and perms.get("visitantes")):
-                destinations.append(ft.NavigationRailDestination(icon=icon, label=label))
-                pages_map.append(func)
         
-        # Adicionar Logout
+        destinations, pages = [], []
+        perms = user_state["perms"]
+        
+        for k, icon, label, func in menu_data:
+            if k == "home" or perms.get(k) or (k == "lista_visitantes" and perms.get("visitantes")):
+                destinations.append(ft.NavigationRailDestination(icon=icon, label=label))
+                pages.append(func)
+        
         destinations.append(ft.NavigationRailDestination(icon=ft.Icons.LOGOUT, label="Sair"))
 
-        # --- CONTROLES DE NAVEGAÇÃO ---
-        rail = ft.NavigationRail(
-            selected_index=0,
-            label_type=ft.NavigationRailLabelType.ALL,
-            min_width=100, min_extended_width=200,
-            leading=ft.Container(get_logo(50), padding=10),
-            group_alignment=-0.9,
-            destinations=destinations,
-            on_change=lambda e: change_page(e.control.selected_index),
-            visible=True
-        )
-        
-        drawer = ft.NavigationDrawer(
-            controls=[
-                ft.Container(height=12),
-                ft.Column([get_logo(60), ft.Text(APP_TITLE, weight="bold")], horizontal_alignment="center"),
-                ft.Divider(thickness=2),
-            ] + [
-                ft.NavigationDrawerDestination(icon=d.icon, label=d.label) for d in destinations
-            ],
-            on_change=lambda e: change_page_drawer(e.control.selected_index)
-        )
+        rail = ft.NavigationRail(selected_index=0, label_type=ft.NavigationRailLabelType.ALL, min_width=100, min_extended_width=200, leading=ft.Container(get_logo(50), padding=10), destinations=destinations, on_change=lambda e: nav(e.control.selected_index))
+        drawer = ft.NavigationDrawer(controls=[ft.Container(height=20), ft.Column([get_logo(60), ft.Text("IEQ Gestão")], horizontal_alignment="center"), ft.Divider()] + [ft.NavigationDrawerDestination(icon=d.icon, label=d.label) for d in destinations], on_change=lambda e: nav(e.control.selected_index))
         page.drawer = drawer
+        appbar = ft.AppBar(leading=ft.IconButton(ft.Icons.MENU, on_click=lambda e: page.open(drawer)), title=ft.Text(APP_TITLE), bgcolor=THEME_COLOR, color="white", visible=False)
 
-        app_bar = ft.AppBar(
-            leading=ft.IconButton(ft.Icons.MENU, on_click=lambda e: page.open(drawer)),
-            leading_width=40,
-            title=ft.Text(APP_TITLE, size=16),
-            center_title=True,
-            bgcolor=THEME_COLOR,
-            color="white",
-            visible=False
-        )
+        def nav(idx):
+            if idx == len(destinations)-1: logout(); return
+            rail.selected_index = idx; drawer.selected_index = idx
+            func = pages[idx]
+            if func == visitors_list_view:
+                content.content = func(page, db, user_state["readonly"], on_edit_visitor=lambda vid: (content.__setattr__("content", visitor_edit_view(page, db, vid, lambda: nav(idx))), page.update()), on_add_visitor=lambda: (content.__setattr__("content", visitors_view(page, db, user_state["readonly"], lambda: nav(idx))), page.update()))
+            else: content.content = func(page, db, user_state["readonly"])
+            page.close(drawer); page.update()
+
+        row = ft.Row([rail, ft.VerticalDivider(width=1), content], expand=True, spacing=0)
+        page.add(appbar, row)
+
+        def resize(e):
+            is_mobile = page.width < 800
+            rail.visible = not is_mobile; row.controls[1].visible = not is_mobile; appbar.visible = is_mobile; page.update()
         
-        # Lógica de troca de telas internas (Novo e Editar)
-        def open_visitor_edit(visitor_id):
-            # Passa a função change_page(0) como callback para voltar para a lista (índice 0 assumindo que Visitantes é o primeiro)
-            # Precisamos saber o índice atual para voltar corretamente
-            current_idx = rail.selected_index if rail.selected_index is not None else 0
-            content_area.content = visitor_edit_view(page, db, visitor_id, lambda: change_page(current_idx))
-            page.update()
+        page.on_resized = resize; resize(None); nav(0)
 
-        def open_visitor_add():
-            current_idx = rail.selected_index if rail.selected_index is not None else 0
-            # Abre o formulário de cadastro passando o callback para voltar
-            content_area.content = visitors_view(page, db, readonly=False, on_back_callback=lambda: change_page(current_idx))
-            page.update()
-
-        def change_page(index):
-            if index == len(destinations) - 1: # Logout
-                logout()
-                return
-            
-            rail.selected_index = index
-            drawer.selected_index = index
-            
-            view_func = pages_map[index]
-            
-            # Se for a lista de visitantes, injeta as funções de Adicionar e Editar
-            if view_func == visitors_list_view:
-                content_area.content = view_func(
-                    page, db, 
-                    readonly=current_user["readonly"], 
-                    on_edit_visitor=open_visitor_edit,
-                    on_add_visitor=open_visitor_add # Passa a função de adicionar
-                )
-            else:
-                content_area.content = view_func(page, db, readonly=current_user["readonly"])
-            
-            page.close(drawer)
-            page.update()
-
-        def change_page_drawer(index):
-            change_page(index)
-
-        layout_row = ft.Row([rail, ft.VerticalDivider(width=1, visible=True), content_area], expand=True, spacing=0)
-        page.add(app_bar, layout_row)
-
-        def handle_resize(e):
-            if page.width < 800:
-                rail.visible = False
-                layout_row.controls[1].visible = False
-                app_bar.visible = True
-            else:
-                rail.visible = True
-                layout_row.controls[1].visible = True
-                app_bar.visible = False
-            page.update()
-
-        page.on_resized = handle_resize
-        handle_resize(None)
-        
-        if pages_map: change_page(0)
-
-    # Iniciar App
-    page.add(login_view(page, db, login_success))
+    page.add(login_view(page, db, on_login_success))
 
 if __name__ == "__main__":
     ft.app(main, assets_dir="assets")
