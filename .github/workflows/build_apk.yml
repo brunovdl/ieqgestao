@@ -3,51 +3,42 @@ name: Build Android APK
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch: # Permite rodar manualmente clicando no botão no GitHub
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Baixa o código do repositório
     - name: Checkout code
       uses: actions/checkout@v4
 
-    # 2. Instala Python 3.12
     - name: Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.12'
 
-    # 3. Instala o Flutter (Motor do Flet Mobile)
     - name: Setup Flutter
       uses: subosito/flutter-action@v2
       with:
         flutter-version: '3.24.0'
 
-    # 4. Instala as bibliotecas do requirements.txt
     - name: Install Python Dependencies
       run: |
         pip install --upgrade pip
         pip install -r requirements.txt
 
-    # 5. Cria o arquivo .env usando os Segredos do GitHub
     - name: Create .env file
       run: |
         echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env
         echo "SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}" >> .env
         echo "YOUTUBE_CHANNEL_ID=${{ secrets.YOUTUBE_CHANNEL_ID }}" >> .env
 
-    # 6. Compila o APK
-    # --module-name app: aponta para app.py
-    # --project-name: nome da pasta interna (sem espaços)
-    # --product-name: Nome que aparece embaixo do ícone
+    # --- PASSO CORRIGIDO ---
     - name: Build APK
       run: |
-        flet build apk --module-name app --org "com.ieq.araraquara" --project-name "ieq_jd_portugal" --product-name "IEQ - Jd Portugal"
+        flet build apk --module-name app --org "com.ieq.araraquara" --product-name "IEQ - Jd Portugal"
 
-    # 7. Disponibiliza o arquivo para download
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
