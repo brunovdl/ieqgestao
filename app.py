@@ -1,6 +1,6 @@
 """
 IEQ Gestão - Sistema Integrado de Gestão Eclesiástica
-VERSÃO: Final para QA (Título Atualizado)
+VERSÃO: Permissões Estritas (Admin vs Usuário Leitura)
 """
 import flet as ft
 import json
@@ -23,7 +23,6 @@ load_dotenv()
 # CONFIGURAÇÕES E UTILITÁRIOS
 # ==============================================================================
 
-# --- TÍTULO ATUALIZADO ---
 APP_TITLE = "IEQ Jd Portugal - Araraquara"
 THEME_COLOR = "#1976D2"
 
@@ -151,19 +150,36 @@ class Database:
         except: return False
 
     def get_user_permissions(self, username):
+        """
+        Define permissões estritas:
+        - Admin: Acesso total (readonly = False)
+        - Usuário: Apenas leitura (readonly = True)
+        """
         try:
             res = self.supabase.table('users').select('permissions, is_admin').eq('username', username).execute()
             if res.data:
                 u = res.data[0]
-                if u.get('is_admin'): 
-                    return {"visitantes": True, "celulas": True, "usuarios": True, "galeria": True, "readonly": False, "home": True}
+                is_admin = u.get('is_admin', False)
+                
+                # Permissões base
                 perms = u.get('permissions', {})
                 if isinstance(perms, str): perms = json.loads(perms)
+                
+                # Regra Mestra: Se não for admin, é SOMENTE LEITURA
+                perms['readonly'] = not is_admin
+                perms['is_admin'] = is_admin
                 perms['home'] = True 
-                if perms.get('visitantes'): perms['lista_visitantes'] = True
+                
+                # Se for admin, garante acesso a tudo
+                if is_admin:
+                    perms.update({"visitantes": True, "celulas": True, "usuarios": True, "galeria": True})
+                else:
+                    # Se for usuário comum, garante que não pode acessar gestão de usuários
+                    perms['usuarios'] = False 
+                    
                 return perms
-            return {}
-        except: return {}
+            return {'readonly': True}
+        except: return {'readonly': True}
 
     def add_user(self, username, password, is_admin, perms, full_name, email, phone):
         try:
@@ -365,14 +381,14 @@ def login_view(page, db, on_success):
     )
 
 def home_view(page, db, readonly=False):
-    # --- 1. Carrossel de Fotos Animado (Multi-itens) ---
+    # --- 1. Carrossel de Fotos ---
     carousel_photos = db.get_recent_photos(15)
     if not carousel_photos: carousel_photos = ["https://via.placeholder.com/300x200?text=Bem-vindo"] * 6
     
     carousel_row = ft.Row(spacing=10, alignment=ft.MainAxisAlignment.CENTER)
     current_start_index = [0]
 
-    # --- Função Lightbox (Fullscreen) ---
+    # --- Lightbox ---
     def open_lightbox_home(src):
         img_full = ft.Image(src=src, fit=ft.ImageFit.CONTAIN, width=page.width, height=page.height)
         stack = ft.Stack([
@@ -421,7 +437,7 @@ def home_view(page, db, readonly=False):
     update_carousel_view(do_update=False)
     if len(carousel_photos) > 1: threading.Thread(target=cycle_carousel, daemon=True).start()
 
-    # --- YouTube Dinâmico ---
+    # --- YouTube ---
     clean_id = YOUTUBE_CHANNEL_ID.strip().replace('"', '').replace("'", "") if YOUTUBE_CHANNEL_ID else ""
     thumb_src = get_youtube_thumbnail(clean_id)
     if not thumb_src: thumb_src = "https://img.youtube.com/vi/AKw0E0t2k6c/maxresdefault.jpg"
@@ -445,10 +461,13 @@ def home_view(page, db, readonly=False):
         if not events: agenda_col.controls.append(ft.Text("Sem eventos próximos.", italic=True))
         for ev in events:
             d = datetime.strptime(ev['event_date'], "%Y-%m-%d")
+            # --- PROTEÇÃO VISUAL: Se readonly, esconde botão de deletar ---
+            delete_btn = ft.IconButton(ft.Icons.DELETE, icon_color="red", on_click=lambda e, x=ev['id']: (db.delete_event(x), refresh_agenda(), show_success(page, "Removido!")))
+            
             card = ft.Card(content=ft.Container(content=ft.Row([
                 ft.Container(content=ft.Column([ft.Text(str(d.day), size=24, weight="bold", color="white"), ft.Text(d.strftime("%b").upper(), size=12, color="white")], alignment="center", spacing=0), bgcolor=THEME_COLOR, width=60, height=60, border_radius=8, alignment=ft.alignment.center),
                 ft.Column([ft.Text(ev['title'], weight="bold"), ft.Text(f"{ev['event_time']} - {ev['location']}", size=12, color="grey"), ft.Text(ev['description'], size=12, italic=True)], expand=True),
-                ft.IconButton(ft.Icons.DELETE, icon_color="red", on_click=lambda e, x=ev['id']: (db.delete_event(x), refresh_agenda(), show_success(page, "Removido!"))) if not readonly else ft.Container()
+                delete_btn if not readonly else ft.Container() # Oculta botão se readonly
             ]), padding=10))
             agenda_col.controls.append(card)
         page.update()
@@ -463,12 +482,16 @@ def home_view(page, db, readonly=False):
 
     refresh_agenda()
     
+    # --- Cabeçalho Agenda ---
+    # Se readonly, esconde o botão de adicionar (+)
+    agenda_header = ft.Row([ft.Text("Agenda", size=20, weight="bold"), ft.IconButton(ft.Icons.ADD_CIRCLE, icon_color=THEME_COLOR, on_click=add_ev_dialog) if not readonly else ft.Container()], alignment="spaceBetween")
+
     return ft.ListView([
         ft.Text(APP_TITLE, size=24, weight="bold", color=THEME_COLOR),
         ft.Container(content=carousel_row, height=160), 
         ft.Divider(),
         yt_card, ft.Divider(),
-        ft.Row([ft.Text("Agenda", size=20, weight="bold"), ft.IconButton(ft.Icons.ADD_CIRCLE, icon_color=THEME_COLOR, on_click=add_ev_dialog) if not readonly else ft.Container()], alignment="spaceBetween"),
+        agenda_header,
         agenda_col
     ], padding=10, spacing=20)
 
@@ -530,41 +553,65 @@ def visitors_list_view(page, db, readonly=False, on_edit_visitor=None, on_add_vi
 
 def cells_view(page, db, readonly=False):
     view = ft.Ref[ft.Column]()
-    filter_dd = ft.Dropdown(width=130, label="Exibir", value="Todas", text_size=14, content_padding=10, options=[ft.dropdown.Option("Todas"), ft.dropdown.Option("Ativas"), ft.dropdown.Option("Inativas")], on_change=lambda e: show_list(), visible=not readonly)
+    
+    # --- FILTRO (Só aparece se NÃO for ReadOnly) ---
+    filter_dd = ft.Dropdown(
+        width=130, label="Exibir", value="Todas", text_size=14, content_padding=10,
+        options=[ft.dropdown.Option("Todas"), ft.dropdown.Option("Ativas"), ft.dropdown.Option("Inativas")],
+        on_change=lambda e: show_list(),
+        visible=not readonly # Se for readonly, esconde o filtro
+    )
+
     def open_google_maps(address):
         if not address: show_warning(page, "Endereço não cadastrado."); return
         page.launch_url(f"https://www.google.com/maps/search/?api=1&query={urllib.parse.quote(address)}")
+
     def confirm_hard_delete(cid, cname):
         def delete(e):
             page.close(dlg)
             if db.delete_cell_permanent(cid): show_success(page, "Registro apagado!"); show_list()
             else: show_error(page, "Erro.")
         dlg = ft.AlertDialog(title=ft.Text("Exclusão Permanente"), content=ft.Text(f"Apagar '{cname}' do banco?"), actions=[ft.TextButton("Cancelar", on_click=lambda e: page.close(dlg)), ft.TextButton("Apagar", on_click=delete, style=ft.ButtonStyle(color="red"))]); page.open(dlg)
+
     def show_list():
         items = db.get_all_cells()
-        current_filter = filter_dd.value
+        
+        # Lógica de Filtro
+        if readonly:
+            # Se for ReadOnly (Usuário Comum), FORÇA exibir apenas ativos e ignora o dropdown
+            current_filter = "Ativas"
+        else:
+            current_filter = filter_dd.value
+
         filtered_items = []
         for c in items:
             c_active = c[8]
-            if readonly:
-                if c_active: filtered_items.append(c)
-            else:
-                if current_filter == "Todas": filtered_items.append(c)
-                elif current_filter == "Ativas" and c_active: filtered_items.append(c)
-                elif current_filter == "Inativas" and not c_active: filtered_items.append(c)
+            
+            if current_filter == "Todas": filtered_items.append(c)
+            elif current_filter == "Ativas" and c_active: filtered_items.append(c)
+            elif current_filter == "Inativas" and not c_active: filtered_items.append(c)
         
-        if not filtered_items: content = ft.Text("Nenhum registro.", color="grey")
+        if not filtered_items:
+            content = ft.Text("Nenhum registro.", color="grey")
         else:
             cell_cards = []
             for c in filtered_items:
                 c_id, c_name, c_leader, c_host, c_address, c_day, c_time, c_obs, c_active = c
+                
                 card_bg = THEME_COLOR if c_active else ft.colors.GREY_700
                 status_icon = ft.Icons.HOME_FILLED if c_active else ft.Icons.HOME_WORK_OUTLINED
                 opacity = 1.0 if c_active else 0.8
+                
+                # --- BOTÕES DE AÇÃO (Escondidos se ReadOnly) ---
                 admin_actions = ft.Container()
                 if not readonly:
-                    if c_active: admin_actions = ft.IconButton(ft.Icons.DELETE, icon_color="red", tooltip="Desativar", on_click=lambda e, x=c_id: (db.deactivate_cell(x), show_list()))
-                    else: admin_actions = ft.Row([ft.IconButton(ft.Icons.RESTORE, icon_color="green", tooltip="Reativar", on_click=lambda e, x=c_id: (db.activate_cell(x), show_list())), ft.IconButton(ft.Icons.DELETE_FOREVER, icon_color="red", tooltip="Excluir", on_click=lambda e, x=c_id, n=c_name: confirm_hard_delete(x, n))], spacing=0)
+                    if c_active:
+                        admin_actions = ft.IconButton(ft.Icons.DELETE, icon_color="red", tooltip="Desativar", on_click=lambda e, x=c_id: (db.deactivate_cell(x), show_list()))
+                    else:
+                        admin_actions = ft.Row([
+                            ft.IconButton(ft.Icons.RESTORE, icon_color="green", tooltip="Reativar", on_click=lambda e, x=c_id: (db.activate_cell(x), show_list())),
+                            ft.IconButton(ft.Icons.DELETE_FOREVER, icon_color="red", tooltip="Excluir", on_click=lambda e, x=c_id, n=c_name: confirm_hard_delete(x, n))
+                        ], spacing=0)
                 
                 card = ft.Card(content=ft.Container(content=ft.Column([
                     ft.Container(content=ft.Column([ft.Icon(status_icon, size=40, color="white"), ft.Text(c_day.upper(), weight="bold", color="white", size=12), ft.Text(c_time, weight="bold", color="white", size=20), ft.Text("INATIVA" if not c_active else "", color="white", size=10, weight="bold")], horizontal_alignment="center", spacing=2), bgcolor=card_bg, height=130, alignment=ft.alignment.center, border_radius=ft.border_radius.only(top_left=10, top_right=10), clip_behavior=ft.ClipBehavior.HARD_EDGE),
@@ -574,13 +621,22 @@ def cells_view(page, db, readonly=False):
                         ft.Row([ft.Icon(ft.Icons.REAL_ESTATE_AGENT, size=16, color="grey"), ft.Text(f"Anfitrião: {c_host}", size=13, color="grey", expand=True)]),
                         ft.Row([ft.Icon(ft.Icons.LOCATION_ON, size=16, color="red"), ft.Text(c_address if c_address else "Sem endereço", size=12, color="grey", expand=True, no_wrap=True)]) if c_address else ft.Container(),
                         ft.Divider(),
-                        ft.Row([ft.ElevatedButton("Abrir Mapa", icon=ft.Icons.MAP, icon_color="white", bgcolor="green", color="white", style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8)), on_click=lambda e, addr=c_address: open_google_maps(addr), visible=bool(c_address)), admin_actions], alignment="spaceBetween")
+                        ft.Row([
+                            ft.ElevatedButton("Abrir Mapa", icon=ft.Icons.MAP, icon_color="white", bgcolor="green", color="white", style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8)), on_click=lambda e, addr=c_address: open_google_maps(addr), visible=bool(c_address)),
+                            admin_actions # Botões de admin aqui
+                        ], alignment="spaceBetween")
                     ], spacing=5), padding=15)
                 ], spacing=0), opacity=opacity), col={"sm": 12, "md": 6, "lg": 4, "xl": 3}, elevation=4)
                 cell_cards.append(card)
             content = ft.ResponsiveRow(cell_cards)
         
-        view.current.controls = [ft.Row([ft.Text("Casas de Cornélio", size=24, weight="bold", color=THEME_COLOR), ft.Row([filter_dd, ft.IconButton(ft.Icons.ADD, on_click=show_form, bgcolor=THEME_COLOR, icon_color="white") if not readonly else ft.Container()], spacing=5)], alignment="spaceBetween"), ft.Divider(), ft.Column([content], scroll="auto", expand=True)]
+        # Cabeçalho Casas: Se readonly, esconde botão ADD e filtro Dropdown
+        header_row = ft.Row([
+            ft.Text("Casas de Cornélio", size=24, weight="bold", color=THEME_COLOR),
+            ft.Row([filter_dd, ft.IconButton(ft.Icons.ADD, on_click=show_form, bgcolor=THEME_COLOR, icon_color="white") if not readonly else ft.Container()], spacing=5)
+        ], alignment="spaceBetween")
+
+        view.current.controls = [header_row, ft.Divider(), ft.Column([content], scroll="auto", expand=True)]
         page.update()
 
     def show_form(e):
@@ -648,15 +704,17 @@ def main(page: ft.Page):
 
     def on_login_success(username):
         user_state["user"] = username
+        # AQUI BUSCA AS PERMISSÕES DO BANCO (incluindo o readonly calculado)
         perms = db.get_user_permissions(username)
         user_state["perms"] = perms
-        user_state["readonly"] = perms.get("readonly", False)
+        user_state["readonly"] = perms.get("readonly", True) # Padrão True (Bloqueado) se falhar
         dashboard()
 
     def dashboard():
         page.clean()
         content = ft.Container(expand=True, padding=10)
         
+        # Passa o 'readonly' para a Gallery View
         menu_data = [
             ("home", ft.Icons.HOME, "Início", home_view),
             ("lista_visitantes", ft.Icons.PEOPLE, "Visitantes", visitors_list_view),
@@ -684,6 +742,7 @@ def main(page: ft.Page):
             if idx == len(destinations)-1: logout(); return
             rail.selected_index = idx; drawer.selected_index = idx
             func = pages[idx]
+            # Passa user_state["readonly"] para todas as views
             if func == visitors_list_view:
                 content.content = func(page, db, user_state["readonly"], on_edit_visitor=lambda vid: (content.__setattr__("content", visitor_edit_view(page, db, vid, lambda: nav(idx))), page.update()), on_add_visitor=lambda: (content.__setattr__("content", visitors_view(page, db, user_state["readonly"], lambda: nav(idx))), page.update()))
             else: content.content = func(page, db, user_state["readonly"])

@@ -42,7 +42,7 @@ jobs:
     # 6. Comando Mágico: Compila o APK
     - name: Build APK
       run: |
-        flet build apk --module-name app --include-packages flet,supabase,python-dotenv,requests --org "com.ieq.araraquara" --project-name "IEQ Araraquara"
+        flet build apk --module-name app --org "com.ieq.araraquara" --project-name "ieq_jd_pportugal" --product-name "IEQ - Jd Portugal"
 
     # 7. Faz o Upload do APK gerado para você baixar
     - name: Upload APK Artifact
