@@ -11,8 +11,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copia todo o seu código para o servidor
 COPY . .
 
-# Libera a porta 8080
-EXPOSE 8080
+# Libera a porta 8000
+EXPOSE 8000
 
 # Comando para iniciar o app (modo Web)
 CMD ["python", "app.py"]
