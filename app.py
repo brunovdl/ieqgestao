@@ -134,10 +134,17 @@ class Database:
         else:
             self.supabase = None
 
+    # --- Auth & Users ---
     def check_login(self, username, password):
         try:
             response = self.supabase.table('users').select('*').eq('username', username).eq('password', password).execute()
-            return response.data[0] if response.data else None
+            if response.data:
+                user = response.data[0]
+                try:
+                    self.supabase.table('users').update({'last_login': datetime.now().isoformat()}).eq('id', user['id']).execute()
+                except: pass
+                return user
+            return None
         except: return None
 
     def get_user_permissions(self, username):
@@ -148,11 +155,22 @@ class Database:
                 is_admin = u.get('is_admin', False)
                 perms = u.get('permissions', {})
                 if isinstance(perms, str): perms = json.loads(perms)
-                perms['readonly'] = not is_admin
+                
                 perms['is_admin'] = is_admin
+                perms['readonly'] = not is_admin
+                
+                # Módulos PÚBLICOS
                 perms['home'] = True 
-                if is_admin: perms.update({"visitantes": True, "celulas": True, "usuarios": True, "galeria": True})
-                else: perms['usuarios'] = False 
+                perms['galeria'] = True
+                perms['celulas'] = True
+                
+                # Módulo RESTRITO (Visitantes)
+                if is_admin:
+                    perms['visitantes'] = True
+                else:
+                    perms['visitantes'] = perms.get('visitantes', False)
+
+                perms['usuarios'] = is_admin
                 return perms
             return {'readonly': True}
         except: return {'readonly': True}
@@ -181,17 +199,47 @@ class Database:
 
     def get_all_users(self):
         try:
-            res = self.supabase.table('users').select('id, username, full_name, email, is_admin, permissions').order('full_name').execute()
-            return [(u['id'], u['username'], u.get('full_name', ''), u.get('email', ''), u['is_admin'], json.dumps(u['permissions'])) for u in res.data]
+            res = self.supabase.table('users').select('id, username, full_name, email, is_admin, permissions, created_at, last_login').order('full_name').execute()
+            result = []
+            for u in res.data:
+                perms = u['permissions']
+                if isinstance(perms, str): perms = json.loads(perms)
+                
+                # CORREÇÃO FUSO HORÁRIO USUÁRIOS
+                created = u.get('created_at')
+                last = u.get('last_login')
+                # Se houver data, converte UTC -> Local
+                # O .astimezone() sem argumentos usa o horário do sistema (Brasil)
+                
+                result.append((
+                    u['id'], 
+                    u['username'], 
+                    u.get('full_name', ''), 
+                    u.get('email', ''), 
+                    u['is_admin'], 
+                    json.dumps(perms),
+                    created,
+                    last
+                ))
+            return result
         except: return []
 
     def get_user_by_id(self, uid):
         try: return self.supabase.table('users').select('*').eq('id', uid).execute().data[0]
         except: return None
 
+    # --- VISITANTES (CORRIGIDO) ---
     def add_visitor(self, name, phone, email, address, obs):
         try:
-            data = {'name': name, 'phone': phone, 'email': email, 'address': address, 'observations': obs}
+            # Força o envio da data/hora local atual para garantir precisão
+            data = {
+                'name': name, 
+                'phone': phone, 
+                'email': email, 
+                'address': address, 
+                'observations': obs,
+                'date_visit': datetime.now().isoformat() # <--- Grava a hora exata do seu PC
+            }
             self.supabase.table('visitors').insert(data).execute()
             return True
         except: return False
@@ -202,9 +250,29 @@ class Database:
             result = []
             for v in res.data:
                 dv = v.get('date_visit', '')
-                try: dv = datetime.fromisoformat(dv.replace('Z', '+00:00')).strftime("%d/%m/%Y %H:%M")
-                except: pass
-                result.append((v['id'], v['name'], v.get('phone'), v.get('email'), v.get('address'), dv, v.get('observations')))
+                dt_visit = None
+                if dv:
+                    try: 
+                        # CORREÇÃO CRÍTICA DE DATA:
+                        # 1. replace('Z', '+00:00'): Diz que a data original é UTC
+                        # 2. .astimezone(): Converte para o horário do seu PC (Brasil)
+                        dt_visit = datetime.fromisoformat(dv.replace('Z', '+00:00')).astimezone()
+                    except: pass
+                
+                # Correção também para a data de contato
+                contact_at = v.get('contacted_at')
+                
+                result.append((
+                    v['id'], 
+                    v['name'], 
+                    v.get('phone'), 
+                    v.get('email'), 
+                    v.get('address'), 
+                    dt_visit, # Data corrigida
+                    v.get('observations'),
+                    v.get('contacted_by'),
+                    contact_at
+                ))
             return result
         except: return []
 
@@ -231,7 +299,20 @@ class Database:
                 return (v['id'], v['name'], v.get('phone'), v.get('email'), v.get('address'), dv, v.get('observations'))
             return None
         except: return None
+        
+    def mark_visitor_contacted(self, visitor_id, user_name):
+        try:
+            data = {
+                'contacted_by': user_name,
+                'contacted_at': datetime.now().isoformat()
+            }
+            self.supabase.table('visitors').update(data).eq('id', visitor_id).execute()
+            return True
+        except Exception as e:
+            print(f"Erro ao marcar contato: {e}")
+            return False
 
+    # --- CELULAS ---
     def add_cell(self, name, leader, host, address, day, time, obs):
         try:
             data = {'name': name, 'leader_name': leader, 'host_name': host, 'address': address, 'meeting_day': day, 'meeting_time': time, 'observations': obs, 'active': True}
@@ -263,88 +344,56 @@ class Database:
             return True
         except: return False
 
-    # --- AGENDA & HOME (Atualizado) ---
+    # --- AGENDA & HOME ---
     def add_event(self, title, desc, date, time, loc, is_recurring):
         try:
-            # Garante formato correto da hora HH:MM:SS
             if len(time) == 5: time += ":00"
-            
-            data = {
-                'title': title, 
-                'description': desc, 
-                'event_date': date, 
-                'event_time': time, 
-                'location': loc,
-                'is_recurring': is_recurring # Novo campo
-            }
+            data = {'title': title, 'description': desc, 'event_date': date, 'event_time': time, 'location': loc, 'is_recurring': is_recurring}
             self.supabase.table('agenda').insert(data).execute()
             return True
         except Exception as e:
             print(f"Erro add_event: {e}")
             return False
 
-    def sync_agenda(self):
-        """
-        Faz a manutenção da agenda:
-        1. Eventos passados (>24h) NÃO recorrentes -> EXCLUI.
-        2. Eventos passados recorrentes -> ATUALIZA para a próxima semana.
-        """
+    def update_event(self, eid, title, desc, date, time, loc, is_recurring):
         try:
-            # Pega todos os eventos anteriores a hoje para verificar
-            # (Na prática pegamos tudo para garantir a lógica de hora também)
+            if len(time) == 5: time += ":00"
+            data = {'title': title, 'description': desc, 'event_date': date, 'event_time': time, 'location': loc, 'is_recurring': is_recurring}
+            self.supabase.table('agenda').update(data).eq('id', eid).execute()
+            return True
+        except Exception as e:
+            print(f"Erro update_event: {e}")
+            return False
+
+    def sync_agenda(self):
+        try:
             res = self.supabase.table('agenda').select('*').execute()
             events = res.data
             if not events: return
 
-            now = datetime.now()
+            today = datetime.now().date()
             
             for ev in events:
                 try:
-                    # Monta a data/hora do evento
-                    dt_str = f"{ev['event_date']} {ev['event_time']}"
-                    ev_dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
-                    
-                    # Se o evento já passou há mais de 24 horas
-                    if now > ev_dt + timedelta(hours=24):
+                    ev_date_obj = datetime.strptime(ev['event_date'], "%Y-%m-%d").date()
+                    if ev_date_obj < today:
                         if ev.get('is_recurring'):
-                            # Se é recorrente, joga para a próxima semana
-                            # Loop para garantir que a nova data seja futura (caso o app tenha ficado meses sem abrir)
-                            new_date = ev_dt
-                            while new_date < now:
+                            new_date = ev_date_obj
+                            while new_date < today:
                                 new_date += timedelta(days=7)
-                            
-                            self.supabase.table('agenda').update({
-                                'event_date': new_date.strftime("%Y-%m-%d")
-                            }).eq('id', ev['id']).execute()
+                            self.supabase.table('agenda').update({'event_date': new_date.strftime("%Y-%m-%d")}).eq('id', ev['id']).execute()
                         else:
-                            # Se não é recorrente, exclui
                             self.delete_event(ev['id'])
                 except Exception as e:
-                    print(f"Erro ao sincronizar evento {ev.get('title')}: {e}")
                     continue
         except Exception as e:
             print(f"Erro geral sync_agenda: {e}")
 
     def get_upcoming_events(self):
         try:
-            # Primeiro faz a faxina/atualização
             self.sync_agenda()
-            
-            # Depois busca os futuros
             today = datetime.now().strftime("%Y-%m-%d")
             return self.supabase.table('agenda').select('*').gte('event_date', today).order('event_date').order('event_time').execute().data
-        except: return []
-
-    def delete_event(self, eid):
-        try:
-            self.supabase.table('agenda').delete().eq('id', eid).execute()
-            return True
-        except: return False
-
-    def get_upcoming_events(self):
-        try:
-            today = datetime.now().strftime("%Y-%m-%d")
-            return self.supabase.table('agenda').select('*').gte('event_date', today).order('event_date').execute().data
         except: return []
 
     def delete_event(self, eid):
@@ -463,18 +512,50 @@ def home_view(page, db, readonly=False):
 
     def update_carousel_view(do_update=True):
         w = page.width if page.width else 800
+        
+        # Ajuste de quantidade de fotos por tamanho de tela
         if w < 600: num_visible = 3
         elif w < 1000: num_visible = 4
         else: num_visible = 6
+        
         spacing = 10; total_spacing = (num_visible - 1) * spacing
         available_width = w - 40; img_width = (available_width - total_spacing) / num_visible
+        
         visible_images = []
         for i in range(num_visible):
             idx = (current_start_index[0] + i) % len(carousel_photos)
             src = carousel_photos[idx]
-            img = ft.Image(src=src, height=160, width=img_width, fit=ft.ImageFit.COVER, border_radius=8, gapless_playback=True, animate_size=300)
-            container = ft.Container(content=img, on_click=lambda e, s=src: open_lightbox_home(s), ink=True, border_radius=8)
+            
+            # --- ANIMAÇÃO AQUI ---
+            # 1. A Imagem precisa de uma KEY única (src) para o Switcher saber que mudou
+            img = ft.Image(
+                src=src, 
+                key=src, # O SEGREDO: A Key avisa que é uma nova foto
+                height=160, 
+                width=img_width, 
+                fit=ft.ImageFit.COVER, 
+                border_radius=8, 
+                gapless_playback=True # Evita piscar preto na troca
+            )
+            
+            # 2. Envolvemos a imagem no AnimatedSwitcher
+            switcher = ft.AnimatedSwitcher(
+                content=img,
+                transition=ft.AnimatedSwitcherTransition.FADE, # Efeito Fade
+                duration=800, # Duração da animação (ms)
+                reverse_duration=100,
+                switch_in_curve=ft.AnimationCurve.EASE_IN,
+                switch_out_curve=ft.AnimationCurve.EASE_OUT
+            )
+            
+            container = ft.Container(
+                content=switcher, 
+                on_click=lambda e, s=src: open_lightbox_home(s), 
+                ink=True, 
+                border_radius=8
+            )
             visible_images.append(container)
+            
         carousel_row.controls = visible_images
         if do_update:
             try:
@@ -509,7 +590,6 @@ def home_view(page, db, readonly=False):
 
     agenda_col = ft.Column([], spacing=10)
     
-    # Mapa de dias da semana para Português
     WEEKDAYS = {0: "Segunda-feira", 1: "Terça-feira", 2: "Quarta-feira", 3: "Quinta-feira", 4: "Sexta-feira", 5: "Sábado", 6: "Domingo"}
 
     def refresh_agenda():
@@ -517,77 +597,169 @@ def home_view(page, db, readonly=False):
         agenda_col.controls.clear()
         if not events: agenda_col.controls.append(ft.Text("Sem eventos próximos.", italic=True))
         
+        today_str = datetime.now().strftime("%Y-%m-%d")
+
         for ev in events:
-            # Parse da Data
             d_obj = datetime.strptime(ev['event_date'], "%Y-%m-%d")
             t_obj = datetime.strptime(ev['event_time'], "%H:%M:%S")
             
-            # Formatação Visual
             day_num = d_obj.day
             month_str = d_obj.strftime("%b").upper()
             weekday_name = WEEKDAYS[d_obj.weekday()]
             time_str = t_obj.strftime("%H:%M")
             
-            # Linha 1: Terça-feira às 20:00
             line1_text = f"{weekday_name} às {time_str}"
-            # Linha 2: Local: Igreja
             line2_text = f"Local: {ev['location']}"
             
-            # Ícone de Recorrência (opcional, para visualização)
+            is_today = (ev['event_date'] == today_str)
+            date_box_color = "green" if is_today else THEME_COLOR 
+            
             icon_recur = ft.Icon(ft.Icons.REPEAT, size=16, color="blue", tooltip="Evento Semanal") if ev.get('is_recurring') else ft.Container()
 
-            delete_btn = ft.IconButton(ft.Icons.DELETE, icon_color="red", on_click=lambda e, x=ev['id']: (db.delete_event(x), refresh_agenda(), show_success(page, "Removido!")))
+            # Ações do Evento
+            actions = ft.Container()
+            if not readonly:
+                actions = ft.Column([
+                    ft.IconButton(ft.Icons.EDIT, icon_color=THEME_COLOR, tooltip="Editar", on_click=lambda e, x=ev: edit_ev_dialog(x)),
+                    ft.IconButton(ft.Icons.DELETE, icon_color="red", tooltip="Excluir", on_click=lambda e, x=ev['id']: (db.delete_event(x), refresh_agenda(), show_success(page, "Removido!")))
+                ], spacing=0)
             
             card = ft.Card(content=ft.Container(content=ft.Row([
-                # Quadrado Data (Esquerda)
                 ft.Container(content=ft.Column([
                     ft.Text(str(day_num), size=24, weight="bold", color="white"), 
                     ft.Text(month_str, size=12, color="white")
-                ], alignment="center", spacing=0), bgcolor=THEME_COLOR, width=60, height=60, border_radius=8, alignment=ft.alignment.center),
+                ], alignment="center", spacing=0), bgcolor=date_box_color, width=60, height=60, border_radius=8, alignment=ft.alignment.center),
                 
-                # Texto (Meio)
                 ft.Column([
                     ft.Row([ft.Text(ev['title'], weight="bold", size=16), icon_recur], spacing=5),
-                    ft.Text(line1_text, size=14, color="black"), # Dia e Hora
-                    ft.Text(line2_text, size=12, color="grey"),  # Local
-                    ft.Text(ev['description'], size=12, italic=True, color="grey") # Descrição
+                    ft.Text(line1_text, size=14, color="black", weight="bold" if is_today else "normal"), 
+                    ft.Text(line2_text, size=12, color="grey"),
+                    ft.Text(ev['description'], size=12, italic=True, color="grey")
                 ], expand=True, spacing=2),
                 
-                delete_btn if not readonly else ft.Container()
+                actions
             ]), padding=10))
             agenda_col.controls.append(card)
         page.update()
 
+    # --- FUNÇÃO DE EDIÇÃO (JÁ EXISTENTE NO CÓDIGO ANTERIOR) ---
+    def edit_ev_dialog(ev_data):
+        t = ft.TextField(label="Título *", value=ev_data['title'])
+        d = ft.TextField(label="Descrição", value=ev_data['description'] or "")
+        tm = ft.TextField(label="Hora (HH:MM) *", value=ev_data['event_time'][:5])
+        l = ft.TextField(label="Local", value=ev_data['location'])
+        rec = ft.Checkbox(label="Recorrente (Semanal)", value=ev_data.get('is_recurring', False))
+        
+        db_date_str = ev_data['event_date']
+        current_date_obj = datetime.strptime(db_date_str, "%Y-%m-%d")
+        formatted_date = current_date_obj.strftime("%d-%m-%Y")
+        
+        dt = ft.TextField(label="Data (DD-MM-AAAA) *", value=formatted_date, read_only=True, expand=True)
+
+        def on_date_change(e):
+            if e.control.value:
+                dt.value = e.control.value.strftime("%d-%m-%Y")
+                dt.update()
+
+        date_picker = ft.DatePicker(
+            on_change=on_date_change,
+            first_date=datetime(2000, 1, 1),
+            last_date=datetime(2050, 12, 31),
+            value=current_date_obj, 
+            current_date=current_date_obj,
+            date_picker_entry_mode=ft.DatePickerEntryMode.CALENDAR_ONLY
+        )
+        page.overlay.append(date_picker)
+        page.update()
+
+        def save_changes(e):
+            if not t.value or not dt.value or not tm.value:
+                show_warning(page, "Preencha Título, Data e Hora!"); return
+            try:
+                date_obj = datetime.strptime(dt.value.strip(), "%d-%m-%Y")
+                db_date = date_obj.strftime("%Y-%m-%d")
+            except ValueError:
+                show_error(page, "Data inválida!"); return
+
+            if db.update_event(ev_data['id'], t.value, d.value, db_date, tm.value, l.value, rec.value):
+                page.close(dlg)
+                try: page.overlay.remove(date_picker)
+                except: pass
+                refresh_agenda(); show_success(page, "Evento Atualizado!")
+            else:
+                show_error(page, "Erro ao atualizar.")
+
+        def close_dlg(e):
+            page.close(dlg)
+            try: page.overlay.remove(date_picker)
+            except: pass
+            page.update()
+
+        dlg = ft.AlertDialog(
+            title=ft.Text("Editar Evento"),
+            content=ft.Column([t, d, ft.Row([dt, ft.IconButton(ft.Icons.CALENDAR_MONTH, icon_color=THEME_COLOR, on_click=lambda _: date_picker.pick_date())], alignment="center"), tm, l, rec], height=400, scroll="auto"),
+            actions=[ft.TextButton("Cancelar", on_click=close_dlg), ft.TextButton("Salvar", on_click=save_changes)]
+        )
+        page.open(dlg)
+
     def add_ev_dialog(e):
         t = ft.TextField(label="Título *")
-        d = ft.TextField(label="Descrição", hint_text="Ex: Trazer prato de doce, Pregador X")
+        d = ft.TextField(label="Descrição", hint_text="Ex: Trazer prato de doce")
         
-        # Data com máscara visual simples (placeholder)
-        dt = ft.TextField(label="Data (DD-MM-AAAA) *", hint_text="Ex: 25-12-2025", keyboard_type=ft.KeyboardType.DATETIME)
+        today = datetime.now()
+        dt = ft.TextField(label="Data (DD-MM-AAAA) *", hint_text="Clique no calendário ->", read_only=True, expand=True)
+        
+        def on_date_change(e):
+            if e.control.value:
+                dt.value = e.control.value.strftime("%d-%m-%Y")
+                dt.update()
+        
+        date_picker = ft.DatePicker(
+            on_change=on_date_change,
+            first_date=datetime(2000, 1, 1),
+            last_date=datetime(2050, 12, 31),
+            current_date=today,
+            value=today,
+            date_picker_entry_mode=ft.DatePickerEntryMode.CALENDAR_ONLY
+        )
+        page.overlay.append(date_picker)
+        page.update()
+        
+        btn_calendar = ft.IconButton(icon=ft.Icons.CALENDAR_MONTH, icon_color=THEME_COLOR, tooltip="Selecionar Data", on_click=lambda _: date_picker.pick_date())
+
         tm = ft.TextField(label="Hora (HH:MM) *", value="19:30")
         l = ft.TextField(label="Local", value="Igreja")
-        
-        # Flag Recorrente
         rec = ft.Checkbox(label="Evento Recorrente (Repetir toda semana)", value=False)
         
         def save(e):
             if not t.value or not dt.value or not tm.value:
                 show_warning(page, "Preencha Título, Data e Hora!"); return
-            
-            # Converter Data PT-BR (DD-MM-YYYY) para DB (YYYY-MM-DD)
             try:
                 date_obj = datetime.strptime(dt.value.strip(), "%d-%m-%Y")
                 db_date = date_obj.strftime("%Y-%m-%d")
             except ValueError:
-                show_error(page, "Data inválida! Use Dia-Mês-Ano (Ex: 10-02-2025)")
+                show_error(page, "Data inválida!")
                 return
 
             if db.add_event(t.value, d.value, db_date, tm.value, l.value, rec.value): 
-                page.close(dlg); refresh_agenda(); show_success(page, "Evento Adicionado!")
+                page.close(dlg); 
+                try: page.overlay.remove(date_picker)
+                except: pass
+                refresh_agenda(); show_success(page, "Evento Adicionado!")
             else: 
                 show_error(page, "Erro ao salvar.")
+        
+        def close_dlg(e):
+            page.close(dlg)
+            try: page.overlay.remove(date_picker)
+            except: pass
+            page.update()
 
-        dlg = ft.AlertDialog(title=ft.Text("Novo Evento"), content=ft.Column([t, d, dt, tm, l, rec], height=400, scroll="auto"), actions=[ft.TextButton("Cancelar", on_click=lambda e: page.close(dlg)), ft.TextButton("Salvar", on_click=save)])
+        dlg = ft.AlertDialog(
+            title=ft.Text("Novo Evento"), 
+            content=ft.Column([t, d, ft.Row([dt, btn_calendar], alignment="center"), tm, l, rec], height=400, scroll="auto"), 
+            actions=[ft.TextButton("Cancelar", on_click=close_dlg), ft.TextButton("Salvar", on_click=save)]
+        )
         page.open(dlg)
 
     refresh_agenda()
@@ -604,61 +776,339 @@ def home_view(page, db, readonly=False):
 
 def visitors_view(page, db, readonly=False, on_back_callback=None):
     if readonly: return ft.Center(ft.Text("Restrito"))
+    
+    # --- 1. Definição dos Campos ---
     n = ft.TextField(label="Nome Completo *", prefix_icon=ft.Icons.PERSON, col=12)
-    p = ft.TextField(label="WhatsApp / Telefone", prefix_icon=ft.Icons.PHONE, keyboard_type="phone", col={"sm":12,"md":6})
-    em = ft.TextField(label="E-mail", prefix_icon=ft.Icons.EMAIL, col={"sm":12,"md":6})
+    
+    # Telefone e Email na mesma linha em telas maiores
+    p = ft.TextField(label="WhatsApp / Telefone", prefix_icon=ft.Icons.PHONE, keyboard_type=ft.KeyboardType.PHONE, col={"sm": 12, "md": 6})
+    em = ft.TextField(label="E-mail", prefix_icon=ft.Icons.EMAIL, col={"sm": 12, "md": 6})
+    
     obs = ft.TextField(label="Observações", multiline=True, min_lines=3, col=12)
+    
+    # Componente de Endereço (Reaproveitado)
     addr = address_form_fields(page)
+
+    # --- 2. Lógica de Salvar ---
     def save(e):
-        if not n.value: show_warning(page, "Nome obrigatório!"); return
+        if not n.value:
+            show_warning(page, "Nome obrigatório!")
+            return
+            
         loading = show_loading(page, "Salvando...")
         time.sleep(0.3)
+        
         if db.add_visitor(n.value, p.value, em.value, addr["get_full_address"](), obs.value):
-            hide_loading(page, loading); show_success(page, "Salvo!"); 
-            if on_back_callback: on_back_callback()
-            else: n.value=""; p.value=""; em.value=""; obs.value=""; addr["cep"].value=""; addr["logradouro"].value=""; page.update()
-        else: hide_loading(page, loading); show_error(page, "Erro.")
-    
-    header = ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda e: on_back_callback()) if on_back_callback else ft.Container(), ft.Text("Novo Cadastro", weight="bold")])
-    
-    return ft.Container(content=ft.Column([header, ft.Divider(), ft.ResponsiveRow([n, p, em], spacing=20), ft.Text("Endereço", weight="bold"), addr["ui"], ft.Divider(), ft.ResponsiveRow([obs]), ft.Container(ft.Button("Salvar", icon=ft.Icons.SAVE, on_click=save, style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white"), height=50, width=200), alignment=ft.alignment.center, padding=20)], scroll="auto", spacing=10), padding=20, expand=True)
+            hide_loading(page, loading)
+            show_success(page, "Visitante salvo com sucesso!")
+            
+            if on_back_callback:
+                on_back_callback()
+            else:
+                # Limpa o formulário se não tiver callback de voltar
+                n.value = ""
+                p.value = ""
+                em.value = ""
+                obs.value = ""
+                addr["cep"].value = ""
+                addr["logradouro"].value = ""
+                addr["numero"].value = ""
+                addr["bairro"].value = ""
+                addr["cidade"].value = ""
+                addr["uf"].value = ""
+                addr["status"].value = ""
+                page.update()
+        else:
+            hide_loading(page, loading)
+            show_error(page, "Erro ao salvar no banco de dados.")
+
+    header = ft.Row([
+        ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda e: on_back_callback()) if on_back_callback else ft.Container(),
+        ft.Text("Novo Visitante", size=20, weight="bold")
+    ])
+
+    content = ft.Column([
+        header,
+        ft.Divider(),
+        
+        # Dados Pessoais
+        ft.ResponsiveRow([n]),
+        ft.ResponsiveRow([p, em]),
+        
+        # Seção Endereço
+        ft.Container(height=10), # Espaçamento
+        ft.Text("Endereço", weight="bold", size=16),
+        addr["ui"],
+        
+        ft.Divider(),
+        
+        # Observações e Botão
+        ft.ResponsiveRow([obs]),
+        ft.Container(
+            ft.Button("Salvar Visitante", icon=ft.Icons.SAVE, on_click=save, style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white"), height=50),
+            padding=20,
+            alignment=ft.alignment.center
+        )
+    ], scroll="auto", expand=True)
+
+    return ft.Container(content=content, padding=10, expand=True)
 
 def visitor_edit_view(page, db, vid, back_cb):
+    # 1. Busca os dados atuais do visitante
     v = db.get_visitor_by_id(vid)
-    if not v: show_error(page, "Não achado"); back_cb(); return ft.Container()
-    parts = v[4].split(" CEP: ") if v[4] else ["",""]; main = parts[0].split(" - ") if parts[0] else ["",""]; l_n = main[0].split(", ") if main[0] else ["",""]; b_c = main[1].split(", ") if len(main)>1 else ["",""]; c_u = b_c[1].split("/") if len(b_c)>1 else ["",""]
-    n, p, em, obs = ft.TextField(label="Nome", value=v[1], col=12), ft.TextField(label="Zap", value=v[2], col=6), ft.TextField(label="Email", value=v[3], col=6), ft.TextField(label="Obs", value=v[6], multiline=True, col=12)
-    cep, log, num = ft.TextField(label="CEP", value=parts[1] if len(parts)>1 else "", col=4), ft.TextField(label="Rua", value=l_n[0], col=8), ft.TextField(label="Nº", value=l_n[1] if len(l_n)>1 else "", col=4)
-    bai, cid, uf = ft.TextField(label="Bairro", value=b_c[0], col=4), ft.TextField(label="Cidade", value=c_u[0], col=6), ft.TextField(label="UF", value=c_u[1] if len(c_u)>1 else "", col=2)
-    def save(e):
-        addr_full = f"{log.value}, {num.value} - {bai.value}, {cid.value}/{uf.value} CEP: {cep.value}"
-        if db.update_visitor(vid, n.value, p.value, em.value, addr_full, obs.value): show_success(page, "Atualizado!"); back_cb()
-        else: show_error(page, "Erro")
-    return ft.ListView([ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda e: back_cb()), ft.Text("Editar", size=20, weight="bold")]), ft.ResponsiveRow([n,p,em]), ft.ResponsiveRow([cep,log,num,bai,cid,uf]), ft.ResponsiveRow([obs]), ft.Button("Salvar", on_click=save)], padding=10, expand=True)
+    if not v:
+        show_error(page, "Visitante não encontrado")
+        back_cb()
+        return ft.Container()
 
-def visitors_list_view(page, db, readonly=False, on_edit_visitor=None, on_add_visitor=None):
-    if readonly: return ft.Center(ft.Text("Restrito"))
-    col = ft.Column([], scroll="auto", expand=True)
+    # 2. Lógica para "desmontar" o endereço salvo (Parsing)
+    # Formato esperado: "Rua X, 123 - Centro, Cidade/SP CEP: 12345-678"
+    full_address = v[4] if v[4] else ""
+    cep_val, log_val, num_val, bai_val, cid_val, uf_val = "", "", "", "", "", ""
+
+    try:
+        if " CEP: " in full_address:
+            parts = full_address.split(" CEP: ")
+            cep_val = parts[1]
+            address_part = parts[0] # "Rua X, 123 - Centro, Cidade/SP"
+            
+            if " - " in address_part:
+                street_part, loc_part = address_part.split(" - ", 1)
+                
+                # Rua e Número
+                if ", " in street_part:
+                    log_s, num_s = street_part.rsplit(", ", 1) # rsplit pega o último
+                    log_val = log_s
+                    num_val = num_s
+                else:
+                    log_val = street_part
+
+                # Bairro e Cidade/UF
+                if ", " in loc_part:
+                    bai_s, city_uf = loc_part.split(", ", 1)
+                    bai_val = bai_s
+                    if "/" in city_uf:
+                        cid_s, uf_s = city_uf.split("/")
+                        cid_val = cid_s
+                        uf_val = uf_s
+                else:
+                    bai_val = loc_part
+    except:
+        pass # Se falhar o parsing, os campos ficam vazios para o usuário preencher
+
+    # 3. Definição dos Campos com Valores Iniciais
+    n = ft.TextField(label="Nome Completo *", value=v[1], prefix_icon=ft.Icons.PERSON, col=12)
+    p = ft.TextField(label="WhatsApp / Telefone", value=v[2], prefix_icon=ft.Icons.PHONE, keyboard_type=ft.KeyboardType.PHONE, col={"sm": 12, "md": 6})
+    em = ft.TextField(label="E-mail", value=v[3], prefix_icon=ft.Icons.EMAIL, col={"sm": 12, "md": 6})
+    obs = ft.TextField(label="Observações", value=v[6], multiline=True, min_lines=3, col=12)
+
+    # Componente de Endereço (Preenchido)
+    addr = address_form_fields(page)
+    addr["cep"].value = cep_val
+    addr["logradouro"].value = log_val
+    addr["numero"].value = num_val
+    addr["bairro"].value = bai_val
+    addr["cidade"].value = cid_val
+    addr["uf"].value = uf_val
+
+    # 4. Função Salvar (Atualizar)
+    def save(e):
+        if not n.value:
+            show_warning(page, "Nome obrigatório!")
+            return
+            
+        full_addr_str = addr["get_full_address"]()
+        
+        if db.update_visitor(vid, n.value, p.value, em.value, full_addr_str, obs.value):
+            show_success(page, "Visitante atualizado!")
+            back_cb()
+        else:
+            show_error(page, "Erro ao atualizar.")
+
+    # 5. Layout Padronizado
+    header = ft.Row([
+        ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda e: back_cb()),
+        ft.Text("Editar Visitante", size=20, weight="bold")
+    ])
+
+    content = ft.Column([
+        header,
+        ft.Divider(),
+        
+        ft.ResponsiveRow([n]),
+        ft.ResponsiveRow([p, em]),
+        
+        ft.Container(height=10),
+        ft.Text("Endereço", weight="bold", size=16),
+        addr["ui"],
+        
+        ft.Divider(),
+        
+        ft.ResponsiveRow([obs]),
+        ft.Container(
+            ft.Button("Salvar Alterações", icon=ft.Icons.SAVE, on_click=save, style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white"), height=50),
+            padding=20,
+            alignment=ft.alignment.center
+        )
+    ], scroll="auto", expand=True)
+
+    return ft.Container(content=content, padding=10, expand=True)
+
+def visitors_list_view(page, db, user_state, readonly=False, on_edit_visitor=None, on_add_visitor=None):
+    view = ft.Ref[ft.Column]()
+    
+    # Campo de busca (Estilizado para o Cabeçalho)
+    search_field = ft.TextField(
+        hint_text="Buscar visitante...",
+        prefix_icon=ft.Icons.SEARCH,
+        width=250,
+        height=40,
+        text_size=14,
+        content_padding=10,
+        border_radius=20,
+        on_change=lambda e: show_list(e.control.value)
+    )
+
+    WEEKDAYS = {0: "Segunda", 1: "Terça", 2: "Quarta", 3: "Quinta", 4: "Sexta", 5: "Sábado", 6: "Domingo"}
+
+    def format_visit_date(dt_obj):
+        if not dt_obj: return "-"
+        try:
+            day_str = dt_obj.strftime("%d/%m")
+            weekday = WEEKDAYS[dt_obj.weekday()]
+            return f"{day_str}\n({weekday})"
+        except: return "-"
+
+    def format_contact_info(name, date_iso):
+        if not name or not date_iso: return None
+        try:
+            dt = datetime.fromisoformat(date_iso.replace('Z', '+00:00'))
+            fmt = dt.strftime("%d/%m %H:%M")
+            return f"{name}\n{fmt}"
+        except: return f"{name}"
+
+    def register_contact(vid):
+        current_user = user_state.get("user", "Desconhecido")
+        if db.mark_visitor_contacted(vid, current_user):
+            show_success(page, "Contato registrado!")
+            show_list(search_field.value)
+        else:
+            show_error(page, "Erro ao registrar.")
+
     def delete_v(vid, name):
         def conf(e):
-            if db.delete_visitor(vid): page.close(dlg); show_success(page, "Deletado!"); refresh()
+            if db.delete_visitor(vid): page.close(dlg); show_success(page, "Deletado!"); show_list(search_field.value)
         dlg = ft.AlertDialog(title=ft.Text("Excluir?"), content=ft.Text(f"Apagar {name}?"), actions=[ft.TextButton("Não", on_click=lambda e: page.close(dlg)), ft.TextButton("Sim", on_click=conf)])
         page.open(dlg)
-    def refresh(e=None):
+
+    def show_list(search_term=""):
         items = db.get_all_visitors()
-        col.controls = []
-        if not items: col.controls.append(ft.Text("Nenhum visitante", italic=True))
+        
+        if search_term:
+            st = search_term.lower()
+            items = [v for v in items if st in v[1].lower()]
+
+        columns = [
+            ft.DataColumn(ft.Text("Data Visita")),
+            ft.DataColumn(ft.Text("Nome / Tel")),
+            ft.DataColumn(ft.Text("Status do Contato")),
+            ft.DataColumn(ft.Text("Ações")),
+        ]
+        
+        rows = []
         for v in items:
+            vid, name, phone, email, addr, date_obj, obs, c_by, c_at = v
+            
+            date_cell = ft.Text(format_visit_date(date_obj), size=12, text_align="center")
+
+            name_col = ft.Column([
+                ft.Text(name, weight="bold"),
+                ft.Text(phone if phone else "Sem telefone", size=12, color="grey")
+            ], spacing=2, alignment="center")
+
+            contact_info = format_contact_info(c_by, c_at)
+            
+            if contact_info:
+                status_cell = ft.Container(
+                    content=ft.Row([
+                        ft.Icon(ft.Icons.CHECK_CIRCLE, color="green", size=16),
+                        ft.Text(contact_info, size=11, color="green")
+                    ], spacing=5),
+                    padding=5, border=ft.border.all(1, "green"), border_radius=8
+                )
+            else:
+                status_cell = ft.ElevatedButton(
+                    "Marcar Contato", 
+                    icon=ft.Icons.HOW_TO_REG, 
+                    icon_color="white",
+                    color="white",
+                    bgcolor="orange",
+                    height=30,
+                    style=ft.ButtonStyle(padding=10),
+                    on_click=lambda e, x=vid: register_contact(x)
+                )
+
             btns = []
-            if v[2]: btns.append(ft.IconButton(ft.Icons.MESSAGE, icon_color="green", url=open_whatsapp(v[2], v[1])))
-            if on_edit_visitor: btns.append(ft.IconButton(ft.Icons.EDIT, icon_color=THEME_COLOR, on_click=lambda e, x=v[0]: on_edit_visitor(x)))
-            if not readonly: btns.append(ft.IconButton(ft.Icons.DELETE, icon_color="red", on_click=lambda e, x=v[0], n=v[1]: delete_v(x, n)))
-            col.controls.append(ft.Card(ft.Container(ft.Row([ft.Icon(ft.Icons.PERSON, color=THEME_COLOR), ft.Column([ft.Text(v[1], weight="bold"), ft.Text(v[5], size=12, color="grey")], expand=True), ft.Row(btns)], alignment="spaceBetween"), padding=10)))
+            if phone: 
+                btns.append(ft.IconButton(
+                    content=ft.Image(src="https://img.icons8.com/color/48/whatsapp--v1.png", width=28, height=28),
+                    tooltip="Abrir WhatsApp", 
+                    url=open_whatsapp(phone, name)
+                ))
+            
+            if not readonly:
+                if on_edit_visitor: 
+                    btns.append(ft.IconButton(ft.Icons.EDIT, icon_color=THEME_COLOR, tooltip="Editar", on_click=lambda e, x=vid: on_edit_visitor(x)))
+                btns.append(ft.IconButton(ft.Icons.DELETE, icon_color="red", tooltip="Excluir", on_click=lambda e, x=vid, n=name: delete_v(x, n)))
+
+            rows.append(ft.DataRow(cells=[
+                ft.DataCell(date_cell),
+                ft.DataCell(name_col),
+                ft.DataCell(status_cell),
+                ft.DataCell(ft.Row(btns, spacing=0)),
+            ]))
+
+        table = ft.DataTable(
+            columns=columns, 
+            rows=rows, 
+            heading_row_color=ft.colors.GREY_200, 
+            column_spacing=20,
+            data_row_min_height=60
+        )
+        
+        if not view.current.controls:
+            add_btn = ft.Container() 
+            if not readonly and on_add_visitor:
+                add_btn = ft.ElevatedButton(
+                    "Novo", 
+                    icon=ft.Icons.ADD, 
+                    on_click=lambda e: on_add_visitor(), 
+                    style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white")
+                )
+            
+            header_row = ft.Row(
+                controls=[
+                    add_btn,
+                    search_field 
+                ],
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER
+            )
+            
+            view.current.controls = [
+                header_row,
+                ft.Divider(),
+                # AQUI ESTÁ A CORREÇÃO: vertical_alignment=START
+                ft.Row([table], scroll="always", expand=True, vertical_alignment=ft.CrossAxisAlignment.START)
+            ]
+        else:
+            view.current.controls[-1] = ft.Row([table], scroll="always", expand=True, vertical_alignment=ft.CrossAxisAlignment.START)
+            
         page.update()
-    refresh()
     
-    toolbar = ft.Row([ft.IconButton(ft.Icons.ADD, bgcolor=THEME_COLOR, icon_color="white", on_click=lambda e: on_add_visitor())], alignment=ft.MainAxisAlignment.END)
-    return ft.Container(ft.Column([toolbar, ft.Divider(), col], expand=True), padding=10, expand=True)
+    col = ft.Column(expand=True, ref=view)
+    show_list()
+    return ft.Container(col, padding=10, expand=True)
 
 def cells_view(page, db, readonly=False):
     view = ft.Ref[ft.Column]()
@@ -773,36 +1223,130 @@ def cells_view(page, db, readonly=False):
 def users_view(page, db, readonly=False):
     if readonly: return ft.Center(ft.Text("Negado"))
     view = ft.Ref[ft.Column]()
-    def show_list():
+    
+    # Campo de busca (Estilizado igual Visitantes)
+    search_field = ft.TextField(
+        hint_text="Buscar usuário...", 
+        prefix_icon=ft.Icons.SEARCH, 
+        width=250,
+        height=40,
+        text_size=14,
+        content_padding=10,
+        border_radius=20,
+        on_change=lambda e: show_list(e.control.value)
+    )
+
+    def format_date(iso_str):
+        if not iso_str: return "-"
+        try:
+            dt = datetime.fromisoformat(iso_str.replace('Z', '+00:00'))
+            return dt.strftime("%d/%m/%Y %H:%M")
+        except: return iso_str
+
+    def show_list(search_term=""):
         items = db.get_all_users()
-        lst = []
-        for u in items:
-            title = u[2] if u[2] else u[1]; sub = f"Login: {u[1]}" + (f" • {u[3]}" if u[3] else "")
-            acts = [ft.IconButton(ft.Icons.EDIT, icon_color=THEME_COLOR, on_click=lambda e, x=u[0]: show_edit(x)), ft.IconButton(ft.Icons.DELETE, disabled=u[0]==1, on_click=lambda e,x=u[0]:(db.delete_user(x), show_list()))]
-            lst.append(ft.ListTile(title=ft.Text(title, weight="bold"), subtitle=ft.Text(sub, size=12), leading=ft.Icon(ft.Icons.ADMIN_PANEL_SETTINGS if u[4] else ft.Icons.PERSON), trailing=ft.Row(acts, alignment=ft.MainAxisAlignment.END, spacing=0, width=100)))
         
-        toolbar = ft.Row([ft.IconButton(ft.Icons.ADD, on_click=show_form, bgcolor=THEME_COLOR, icon_color="white")], alignment=ft.MainAxisAlignment.END)
-        view.current.controls = [toolbar, ft.Column(lst, scroll="auto", expand=True)]; page.update()
+        if search_term:
+            st = search_term.lower()
+            items = [u for u in items if st in u[1].lower() or st in u[2].lower()]
+
+        columns = [
+            ft.DataColumn(ft.Text("Nome")),
+            ft.DataColumn(ft.Text("Usuário")),
+            ft.DataColumn(ft.Text("Perfil")),
+            ft.DataColumn(ft.Text("Acesso Visitantes")),
+            ft.DataColumn(ft.Text("Último Login")),
+            ft.DataColumn(ft.Text("Ações")),
+        ]
+        
+        rows = []
+        for u in items:
+            uid, uname, fname, email, is_adm, perms_json, created, last = u
+            
+            perms = json.loads(perms_json) if isinstance(perms_json, str) else (perms_json or {})
+            has_visitor_access = perms.get('visitantes', False) or is_adm
+
+            role = ft.Container(
+                content=ft.Text("ADMIN" if is_adm else "Usuário", size=10, weight="bold", color="white"),
+                bgcolor="red" if is_adm else "green", padding=5, border_radius=5
+            )
+            
+            vis_access = ft.Icon(ft.Icons.CHECK_CIRCLE, color="green", size=16) if has_visitor_access else ft.Icon(ft.Icons.CANCEL, color="grey", size=16)
+
+            actions = ft.Row([
+                ft.IconButton(ft.Icons.EDIT, icon_color=THEME_COLOR, tooltip="Editar", on_click=lambda e, x=uid: show_edit(x)),
+                ft.IconButton(ft.Icons.DELETE, icon_color="red", tooltip="Excluir", disabled=(uid==1), on_click=lambda e, x=uid: (db.delete_user(x), show_list(search_field.value)))
+            ], spacing=0)
+
+            rows.append(ft.DataRow(cells=[
+                ft.DataCell(ft.Text(fname, weight="bold")),
+                ft.DataCell(ft.Text(uname)),
+                ft.DataCell(role),
+                ft.DataCell(vis_access),
+                ft.DataCell(ft.Text(format_date(last), size=12)),
+                ft.DataCell(actions),
+            ]))
+
+        table = ft.DataTable(columns=columns, rows=rows, heading_row_color=ft.colors.GREY_200, column_spacing=20)
+        
+        # --- LAYOUT PADRONIZADO ---
+        if not view.current.controls:
+            # Botão Novo
+            add_btn = ft.ElevatedButton(
+                "Novo", 
+                icon=ft.Icons.ADD, 
+                on_click=show_form, 
+                style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white")
+            )
+            
+            # Cabeçalho Unificado (Botão <--> Busca)
+            header_row = ft.Row(
+                controls=[add_btn, search_field],
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER
+            )
+            
+            view.current.controls = [
+                header_row, 
+                ft.Divider(), 
+                # Tabela alinhada ao TOPO (START)
+                ft.Row([table], scroll="always", expand=True, vertical_alignment=ft.CrossAxisAlignment.START)
+            ]
+        else:
+            # Atualiza apenas a tabela mantendo o alinhamento
+            view.current.controls[-1] = ft.Row([table], scroll="always", expand=True, vertical_alignment=ft.CrossAxisAlignment.START)
+            
+        page.update()
     
     def show_form(e):
         fn, em, ph, u, p = ft.TextField(label="Nome *", col=12), ft.TextField(label="Email", col=6), ft.TextField(label="Tel", col=6), ft.TextField(label="Login *", col=6), ft.TextField(label="Senha *", password=True, col=6)
-        adm, v, c, g = ft.Checkbox(label="Admin", col=12), ft.Checkbox(label="Visitantes", col=12), ft.Checkbox(label="Casas", col=12), ft.Checkbox(label="Galeria", col=12)
+        adm = ft.Checkbox(label="Administrador (Acesso Total)", col=12)
+        v = ft.Checkbox(label="Permitir Acesso a Visitantes", col=12, value=False)
+        
         def save(e):
-            if db.add_user(u.value, p.value, adm.value, {"visitantes":v.value,"celulas":c.value,"galeria":g.value}, fn.value, em.value, ph.value): show_list(); show_success(page, "Criado!")
+            perms_dict = {"visitantes": v.value, "celulas": True, "galeria": True}
+            if db.add_user(u.value, p.value, adm.value, perms_dict, fn.value, em.value, ph.value): 
+                view.current.controls.clear(); show_list(); show_success(page, "Criado!")
             else: show_error(page, "Erro.")
-        view.current.controls = [ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda e: show_list()), ft.Text("Novo")]), ft.Column([ft.ResponsiveRow([fn,em,ph,u,p,adm]), ft.Divider(), ft.Text("Permissões:"), ft.ResponsiveRow([v,c,g]), ft.Button("Criar", on_click=save, style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white"))], scroll="auto", expand=True)]; page.update()
+            
+        view.current.controls = [ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda e: (view.current.controls.clear(), show_list())), ft.Text("Novo Usuário")]), ft.Column([ft.ResponsiveRow([fn,em,ph,u,p,adm,v]), ft.Container(ft.Button("Criar", on_click=save, style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white")), padding=20)], scroll="auto", expand=True)]; page.update()
 
     def show_edit(uid):
         ud = db.get_user_by_id(uid)
         if not ud: return
         fn, em, ph, u, p = ft.TextField(label="Nome", value=ud['full_name'], col=12), ft.TextField(label="Email", value=ud['email'], col=6), ft.TextField(label="Tel", value=ud['phone'], col=6), ft.TextField(label="Login", value=ud['username'], col=6), ft.TextField(label="Senha (vazio=manter)", password=True, col=6)
-        adm = ft.Checkbox(label="Admin", value=ud['is_admin'], col=12)
+        
+        adm = ft.Checkbox(label="Administrador", value=ud['is_admin'], col=12)
         perms = ud['permissions'] if isinstance(ud['permissions'], dict) else json.loads(ud['permissions'] or '{}')
-        v, c, g = ft.Checkbox(label="Visitantes", value=perms.get('visitantes'), col=12), ft.Checkbox(label="Casas", value=perms.get('celulas'), col=12), ft.Checkbox(label="Galeria", value=perms.get('galeria'), col=12)
+        v = ft.Checkbox(label="Permitir Acesso a Visitantes", value=perms.get('visitantes', False), col=12)
+        
         def upd(e):
-            if db.update_user(uid, u.value, p.value, adm.value, {"visitantes":v.value,"celulas":c.value,"galeria":g.value}, fn.value, em.value, ph.value): show_list(); show_success(page, "Atualizado!")
+            perms_dict = {"visitantes": v.value, "celulas": True, "galeria": True}
+            if db.update_user(uid, u.value, p.value, adm.value, perms_dict, fn.value, em.value, ph.value): 
+                view.current.controls.clear(); show_list(); show_success(page, "Atualizado!")
             else: show_error(page, "Erro.")
-        view.current.controls = [ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda e: show_list()), ft.Text("Editar")]), ft.Column([ft.ResponsiveRow([fn,em,ph,u,p,adm]), ft.Divider(), ft.Text("Permissões:"), ft.ResponsiveRow([v,c,g]), ft.Button("Salvar", on_click=upd, style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white"))], scroll="auto", expand=True)]; page.update()
+            
+        view.current.controls = [ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda e: (view.current.controls.clear(), show_list())), ft.Text("Editar Usuário")]), ft.Column([ft.ResponsiveRow([fn,em,ph,u,p,adm,v]), ft.Container(ft.Button("Salvar", on_click=upd, style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white")), padding=20)], scroll="auto", expand=True)]; page.update()
 
     col = ft.Column(expand=True, ref=view); show_list(); return col
 
@@ -921,7 +1465,7 @@ def main(page: ft.Page):
             header_title.value = label; header_icon.name = icon; header.update()
             
             if func == visitors_list_view:
-                content.content = func(page, db, user_state["readonly"], on_edit_visitor=lambda vid: (content.__setattr__("content", visitor_edit_view(page, db, vid, lambda: nav(idx))), page.update()), on_add_visitor=lambda: (content.__setattr__("content", visitors_view(page, db, user_state["readonly"], lambda: nav(idx))), page.update()))
+                content.content = func(page, db, user_state, user_state["readonly"], on_edit_visitor=lambda vid: (content.__setattr__("content", visitor_edit_view(page, db, vid, lambda: nav(idx))), page.update()), on_add_visitor=lambda: (content.__setattr__("content", visitors_view(page, db, user_state["readonly"], lambda: nav(idx))), page.update()))
             else: content.content = func(page, db, user_state["readonly"])
             
             page.close(drawer); page.update()
