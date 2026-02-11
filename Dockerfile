@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copia todo o seu código para o servidor
 COPY . .
+ENV APP_ENV=production
 
 # Libera a porta 8000
 EXPOSE 8000

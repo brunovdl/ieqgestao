@@ -479,7 +479,7 @@ def login_view(page, db, on_success):
             ft.ResponsiveRow([user, pwd]),
             ft.Button("Entrar", on_click=try_login, width=300, style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white"))
         ], horizontal_alignment="center", spacing=20),
-        padding=20, width=400, border=ft.border.all(1, "grey"), border_radius=10, bgcolor="white"
+        padding=20, width=400, border=ft.border.all(1, "grey"), border_radius=10, bgcolor=ft.colors.SURFACE_VARIANT
     )
 
     return ft.Container(
@@ -1071,7 +1071,7 @@ def visitors_list_view(page, db, user_state, readonly=False, on_edit_visitor=Non
         table = ft.DataTable(
             columns=columns, 
             rows=rows, 
-            heading_row_color=ft.colors.GREY_200, 
+            heading_row_color=ft.colors.SURFACE_VARIANT, 
             column_spacing=20,
             data_row_min_height=60
         )
@@ -1287,7 +1287,7 @@ def users_view(page, db, readonly=False):
                 ft.DataCell(actions),
             ]))
 
-        table = ft.DataTable(columns=columns, rows=rows, heading_row_color=ft.colors.GREY_200, column_spacing=20)
+        table = ft.DataTable(columns=columns, rows=rows, heading_row_color=ft.colors.SURFACE_VARIANT, column_spacing=20)
         
         # --- LAYOUT PADRONIZADO ---
         if not view.current.controls:
@@ -1356,8 +1356,10 @@ def users_view(page, db, readonly=False):
 
 def main(page: ft.Page):
     page.title = APP_TITLE_DEFAULT
+    page.theme_mode = ft.ThemeMode.SYSTEM
     page.theme = ft.Theme(color_scheme_seed=THEME_COLOR)
     page.padding = 0
+    page.favicon = "/assets/favicon.png"
     
     db = Database()
     user_state = {"user": None, "perms": {}, "readonly": False}
@@ -1483,10 +1485,25 @@ def main(page: ft.Page):
     page.add(ft.SafeArea(login_view(page, db, on_login_success), expand=True))
 
 if __name__ == "__main__":
-    ft.app(
-        target=main, 
-        assets_dir="assets", 
-        view=ft.WEB_BROWSER, 
-        port=8000, 
-        host="0.0.0.0"
-    )
+    # Verifica se existe a variável de ambiente 'APP_ENV' configurada como 'production'
+    is_production = os.getenv("APP_ENV") == "production"
+
+    if is_production:
+        # MODO SERVIDOR (EasyPanel)
+        # Roda na porta 8000 e libera acesso externo (0.0.0.0)
+        print("Iniciando em modo PRODUÇÃO (Servidor)")
+        ft.app(
+            target=main, 
+            assets_dir="assets", 
+            view=ft.WEB_BROWSER, 
+            port=8000, 
+            host="0.0.0.0"
+        )
+    else:
+        # MODO LOCAL (Seu Computador)
+        # Roda normal, abrindo a janela ou navegador localmente
+        print("Iniciando em modo DESENVOLVIMENTO (Local)")
+        ft.app(
+            target=main, 
+            assets_dir="assets"
+        )
