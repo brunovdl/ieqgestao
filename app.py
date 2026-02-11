@@ -957,11 +957,17 @@ def visitor_edit_view(page, db, vid, back_cb):
 def visitors_list_view(page, db, user_state, readonly=False, on_edit_visitor=None, on_add_visitor=None):
     view = ft.Ref[ft.Column]()
     
-    # Campo de busca (Estilizado para o Cabeçalho)
+    # Verifica se é Mobile (tela menor que 600px)
+    is_mobile = page.width < 600
+    
+    # Ajustes Responsivos
+    # Se for mobile, usa espaçamento menor (10), se for PC usa normal (20)
+    col_spacing = 10 if is_mobile else 20
+    
     search_field = ft.TextField(
-        hint_text="Buscar visitante...",
+        hint_text="Buscar...", # Texto mais curto
         prefix_icon=ft.Icons.SEARCH,
-        width=250,
+        width=250 if not is_mobile else 180, # Busca menor no mobile
         height=40,
         text_size=14,
         content_padding=10,
@@ -969,22 +975,25 @@ def visitors_list_view(page, db, user_state, readonly=False, on_edit_visitor=Non
         on_change=lambda e: show_list(e.control.value)
     )
 
-    WEEKDAYS = {0: "Segunda", 1: "Terça", 2: "Quarta", 3: "Quinta", 4: "Sexta", 5: "Sábado", 6: "Domingo"}
+    WEEKDAYS = {0: "Seg", 1: "Ter", 2: "Qua", 3: "Qui", 4: "Sex", 5: "Sáb", 6: "Dom"}
 
     def format_visit_date(dt_obj):
         if not dt_obj: return "-"
         try:
             day_str = dt_obj.strftime("%d/%m")
             weekday = WEEKDAYS[dt_obj.weekday()]
-            return f"{day_str}\n({weekday})"
+            return f"{day_str}\n{weekday}"
         except: return "-"
 
     def format_contact_info(name, date_iso):
         if not name or not date_iso: return None
         try:
             dt = datetime.fromisoformat(date_iso.replace('Z', '+00:00'))
-            fmt = dt.strftime("%d/%m %H:%M")
-            return f"{name}\n{fmt}"
+            # No mobile, mostra data abreviada
+            fmt = dt.strftime("%d/%m" if is_mobile else "%d/%m %H:%M")
+            # No mobile, tenta mostrar só o primeiro nome se for muito longo
+            display_name = name.split()[0] if is_mobile and len(name) > 10 else name
+            return f"{display_name}\n{fmt}"
         except: return f"{name}"
 
     def register_contact(vid):
@@ -1008,10 +1017,11 @@ def visitors_list_view(page, db, user_state, readonly=False, on_edit_visitor=Non
             st = search_term.lower()
             items = [v for v in items if st in v[1].lower()]
 
+        # Colunas com nomes abreviados se for mobile
         columns = [
-            ft.DataColumn(ft.Text("Data Visita")),
-            ft.DataColumn(ft.Text("Nome / Tel")),
-            ft.DataColumn(ft.Text("Status do Contato")),
+            ft.DataColumn(ft.Text("Data")),
+            ft.DataColumn(ft.Text("Nome")),
+            ft.DataColumn(ft.Text("Status")),
             ft.DataColumn(ft.Text("Ações")),
         ]
         
@@ -1021,45 +1031,62 @@ def visitors_list_view(page, db, user_state, readonly=False, on_edit_visitor=Non
             
             date_cell = ft.Text(format_visit_date(date_obj), size=12, text_align="center")
 
+            # Nome e Telefone
+            name_display = name
+            if is_mobile and len(name) > 15: name_display = name[:13] + "..." # Abrevia nome longo no mobile
+            
             name_col = ft.Column([
-                ft.Text(name, weight="bold"),
-                ft.Text(phone if phone else "Sem telefone", size=12, color="grey")
+                ft.Text(name_display, weight="bold", size=13),
+                ft.Text(phone if phone else "-", size=11, color="grey")
             ], spacing=2, alignment="center")
 
             contact_info = format_contact_info(c_by, c_at)
             
+            # --- LÓGICA DO BOTÃO RESPONSIVO ---
             if contact_info:
+                # Já Contatado
                 status_cell = ft.Container(
                     content=ft.Row([
-                        ft.Icon(ft.Icons.CHECK_CIRCLE, color="green", size=16),
-                        ft.Text(contact_info, size=11, color="green")
-                    ], spacing=5),
+                        ft.Icon(ft.Icons.CHECK_CIRCLE, color="green", size=14),
+                        ft.Text(contact_info, size=10, color="green")
+                    ], spacing=2),
                     padding=5, border=ft.border.all(1, "green"), border_radius=8
                 )
             else:
-                status_cell = ft.ElevatedButton(
-                    "Marcar Contato", 
-                    icon=ft.Icons.HOW_TO_REG, 
-                    icon_color="white",
-                    color="white",
-                    bgcolor="orange",
-                    height=30,
-                    style=ft.ButtonStyle(padding=10),
-                    on_click=lambda e, x=vid: register_contact(x)
-                )
+                # Pendente (Botão de Ação)
+                if is_mobile:
+                    # MOBILE: Apenas Ícone Laranja (Ocupa pouco espaço)
+                    status_cell = ft.IconButton(
+                        icon=ft.Icons.HOW_TO_REG,
+                        icon_color="orange",
+                        tooltip="Marcar Contato", # Segurando o dedo aparece o texto
+                        on_click=lambda e, x=vid: register_contact(x)
+                    )
+                else:
+                    # DESKTOP: Botão Normal com Texto
+                    status_cell = ft.ElevatedButton(
+                        "Marcar", 
+                        icon=ft.Icons.HOW_TO_REG, 
+                        icon_color="white",
+                        color="white",
+                        bgcolor="orange",
+                        height=30,
+                        style=ft.ButtonStyle(padding=10),
+                        on_click=lambda e, x=vid: register_contact(x)
+                    )
 
             btns = []
             if phone: 
                 btns.append(ft.IconButton(
-                    content=ft.Image(src="https://img.icons8.com/color/48/whatsapp--v1.png", width=28, height=28),
-                    tooltip="Abrir WhatsApp", 
+                    content=ft.Image(src="https://img.icons8.com/color/48/whatsapp--v1.png", width=24, height=24), # Ícone menor
+                    tooltip="WhatsApp", 
                     url=open_whatsapp(phone, name)
                 ))
             
             if not readonly:
                 if on_edit_visitor: 
-                    btns.append(ft.IconButton(ft.Icons.EDIT, icon_color=THEME_COLOR, tooltip="Editar", on_click=lambda e, x=vid: on_edit_visitor(x)))
-                btns.append(ft.IconButton(ft.Icons.DELETE, icon_color="red", tooltip="Excluir", on_click=lambda e, x=vid, n=name: delete_v(x, n)))
+                    btns.append(ft.IconButton(ft.Icons.EDIT, icon_color=THEME_COLOR, icon_size=20, tooltip="Editar", on_click=lambda e, x=vid: on_edit_visitor(x)))
+                btns.append(ft.IconButton(ft.Icons.DELETE, icon_color="red", icon_size=20, tooltip="Excluir", on_click=lambda e, x=vid, n=name: delete_v(x, n)))
 
             rows.append(ft.DataRow(cells=[
                 ft.DataCell(date_cell),
@@ -1072,25 +1099,22 @@ def visitors_list_view(page, db, user_state, readonly=False, on_edit_visitor=Non
             columns=columns, 
             rows=rows, 
             heading_row_color=ft.colors.SURFACE_VARIANT, 
-            column_spacing=20,
-            data_row_min_height=60
+            column_spacing=col_spacing, # Espaçamento dinâmico
+            data_row_min_height=50 if is_mobile else 60
         )
         
         if not view.current.controls:
-            add_btn = ft.Container() 
+            add_btn = ft.Container()
             if not readonly and on_add_visitor:
                 add_btn = ft.ElevatedButton(
-                    "Novo", 
+                    "Novo" if not is_mobile else "+", # Botão "Novo" vira "+" no mobile
                     icon=ft.Icons.ADD, 
                     on_click=lambda e: on_add_visitor(), 
-                    style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white")
+                    style=ft.ButtonStyle(bgcolor=THEME_COLOR, color="white", padding=10 if is_mobile else None)
                 )
             
             header_row = ft.Row(
-                controls=[
-                    add_btn,
-                    search_field 
-                ],
+                controls=[add_btn, search_field],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER
             )
@@ -1098,7 +1122,6 @@ def visitors_list_view(page, db, user_state, readonly=False, on_edit_visitor=Non
             view.current.controls = [
                 header_row,
                 ft.Divider(),
-                # AQUI ESTÁ A CORREÇÃO: vertical_alignment=START
                 ft.Row([table], scroll="always", expand=True, vertical_alignment=ft.CrossAxisAlignment.START)
             ]
         else:
@@ -1108,7 +1131,7 @@ def visitors_list_view(page, db, user_state, readonly=False, on_edit_visitor=Non
     
     col = ft.Column(expand=True, ref=view)
     show_list()
-    return ft.Container(col, padding=10, expand=True)
+    return ft.Container(col, padding=5 if is_mobile else 10, expand=True)
 
 def cells_view(page, db, readonly=False):
     view = ft.Ref[ft.Column]()
@@ -1485,25 +1508,39 @@ def main(page: ft.Page):
     page.add(ft.SafeArea(login_view(page, db, on_login_success), expand=True))
 
 if __name__ == "__main__":
-    # Verifica se existe a variável de ambiente 'APP_ENV' configurada como 'production'
+    import os
+    
+    BASE_DIR = os.getcwd()
+    
+    # 1. Pasta TEMPORÁRIA para receber o upload (Fora de assets para evitar bloqueio)
+    TEMP_UPLOAD_DIR = os.path.join(BASE_DIR, "temp_uploads")
+    os.makedirs(TEMP_UPLOAD_DIR, exist_ok=True)
+    
+    # 2. Pasta DEFINITIVA (onde vamos guardar depois)
+    FINAL_UPLOAD_DIR = os.path.join(BASE_DIR, "assets", "uploads")
+    os.makedirs(FINAL_UPLOAD_DIR, exist_ok=True)
+    
+    print(f"--- CONFIGURAÇÃO ---")
+    print(f"Upload Temporário: {TEMP_UPLOAD_DIR}")
+    print(f"--------------------")
+
     is_production = os.getenv("APP_ENV") == "production"
 
     if is_production:
-        # MODO SERVIDOR (EasyPanel)
-        # Roda na porta 8000 e libera acesso externo (0.0.0.0)
-        print("Iniciando em modo PRODUÇÃO (Servidor)")
+        print(">> MODO PRODUÇÃO")
         ft.app(
             target=main, 
             assets_dir="assets", 
+            upload_dir=TEMP_UPLOAD_DIR, # <--- MUDANÇA: Upload na pasta temp
             view=ft.WEB_BROWSER, 
             port=8000, 
             host="0.0.0.0"
         )
     else:
-        # MODO LOCAL (Seu Computador)
-        # Roda normal, abrindo a janela ou navegador localmente
-        print("Iniciando em modo DESENVOLVIMENTO (Local)")
+        print(">> MODO LOCAL")
         ft.app(
             target=main, 
-            assets_dir="assets"
+            assets_dir="assets",
+            upload_dir=TEMP_UPLOAD_DIR, # <--- MUDANÇA: Upload na pasta temp
+            view=ft.WEB_BROWSER
         )
