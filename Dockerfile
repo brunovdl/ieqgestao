@@ -19,4 +19,4 @@ ENV FLET_SERVER_IP=0.0.0.0
 EXPOSE 8080
 
 # Comando para iniciar o app (modo Web)
-CMD ["flet", "run", "app.py", "--web", "--port", "8080"]
+CMD ["python", "app.py"]

@@ -1483,4 +1483,10 @@ def main(page: ft.Page):
     page.add(ft.SafeArea(login_view(page, db, on_login_success), expand=True))
 
 if __name__ == "__main__":
-    ft.app(main, assets_dir="assets")
+    ft.app(
+        target=main, 
+        assets_dir="assets", 
+        view=ft.WEB_BROWSER, 
+        port=8080, 
+        host="0.0.0.0"
+    )
