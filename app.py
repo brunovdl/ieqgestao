@@ -1536,7 +1536,7 @@ if __name__ == "__main__":
             port=8000, 
             host="0.0.0.0"
         )
-    else:
+    else:   
         print(">> MODO LOCAL")
         ft.app(
             target=main, 
