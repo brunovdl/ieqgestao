@@ -1,8 +1,8 @@
 """
 Módulo de Galeria de Fotos
 Gerenciamento de álbuns e fotos com Supabase Storage
-VERSÃO FINAL REFINADA - Flet 0.25.2
-(Visual Limpo + Correção Botões Lightbox + Capa do Álbum Dinâmica)
+VERSÃO FINAL MOBILE-FRIENDLY - Flet 0.25.2
+(Capa Clicável + Botões Ajustados)
 """
 import flet as ft
 from datetime import datetime
@@ -247,10 +247,11 @@ def gallery_view(page: ft.Page, db, current_user, show_success, show_error, show
                     except:
                         pass
                 
+                # --- MUDANÇA PRINCIPAL AQUI ---
                 card = ft.Card(
                     content=ft.Container(
                         content=ft.Column([
-                            # Imagem de capa
+                            # Imagem de capa - AGORA CLICÁVEL
                             ft.Container(
                                 content=cover_content,
                                 bgcolor="#1976D2",
@@ -258,7 +259,11 @@ def gallery_view(page: ft.Page, db, current_user, show_success, show_error, show
                                 width=300, # Garante largura
                                 alignment=cover_alignment,
                                 border_radius=ft.border_radius.BorderRadius(top_left=10, top_right=10, bottom_left=0, bottom_right=0),
-                                clip_behavior=ft.ClipBehavior.HARD_EDGE # Corta as bordas da imagem
+                                clip_behavior=ft.ClipBehavior.HARD_EDGE,
+                                # AÇÃO DE CLIQUE NA IMAGEM
+                                on_click=lambda e, aid=album['id']: show_album_photos(aid),
+                                ink=True, # Efeito visual de clique
+                                tooltip="Toque para abrir o álbum"
                             ),
                             # Informações
                             ft.Container(
@@ -273,20 +278,18 @@ def gallery_view(page: ft.Page, db, current_user, show_success, show_error, show
                                         ft.Text(event_date if event_date else "Sem data", size=12, color="grey")
                                     ], spacing=5),
                                     ft.Divider(height=5),
+                                    
+                                    # MUDANÇA: Linha de botões simplificada para mobile
                                     ft.Row([
-                                        ft.TextButton(
-                                            "Ver Fotos",
-                                            icon=ft.Icons.VISIBILITY,
-                                            on_click=lambda e, aid=album['id']: show_album_photos(aid)
-                                        ),
+                                        ft.Container(expand=True), # Empurra o ícone de deletar para a direita
                                         ft.IconButton(
                                             icon=ft.Icons.DELETE,
                                             icon_color="red",
                                             tooltip="Deletar álbum",
                                             on_click=lambda e, aid=album['id'], aname=album['name']: confirm_delete_album(aid, aname),
-                                            disabled=readonly
-                                        ) if not readonly else ft.Container()
-                                    ], alignment="spaceBetween")
+                                            visible=not readonly # Só mostra se não for readonly
+                                        )
+                                    ], alignment=ft.MainAxisAlignment.END)
                                 ], spacing=5),
                                 padding=10
                             )
@@ -451,8 +454,7 @@ def gallery_view(page: ft.Page, db, current_user, show_success, show_error, show
                 if count_ref.current:
                     count_ref.current.value = f"{current_index[0] + 1} / {len(current_album_photos_list)}"
                     count_ref.current.update()
-                # CORREÇÃO: Forçar atualização da página para garantir que a UI reflita a mudança
-                page.update() 
+                page.update()
 
         def prev_photo(e=None):
             if current_index[0] > 0:
@@ -464,7 +466,6 @@ def gallery_view(page: ft.Page, db, current_user, show_success, show_error, show
                 if count_ref.current:
                     count_ref.current.value = f"{current_index[0] + 1} / {len(current_album_photos_list)}"
                     count_ref.current.update()
-                # CORREÇÃO: Forçar atualização da página
                 page.update()
         
         # Lógica de Gestos (Swipe)
