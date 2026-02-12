@@ -224,25 +224,29 @@ def gallery_view(page: ft.Page, db, current_user, show_success, show_error, show
                                     begin=ft.alignment.top_center,
                                     end=ft.alignment.bottom_center,
                                     colors=[ft.colors.TRANSPARENT, ft.colors.BLACK87],
-                                    stops=[0.0, 0.6]
+                                    stops=[0.0, 0.8]
                                 ),
-                                padding=10,
-                                content=ft.Row([
-                                    ft.Column([
-                                        ft.Text(album['name'], weight="bold", size=16, color="white", max_lines=1, overflow="ellipsis"),
-                                        ft.Text(f"{photos_count} fotos • {event_date}", size=12, color="white70")
-                                    ], expand=True, spacing=2),
-                                    
-                                    # Botão Delete
-                                    ft.IconButton(
-                                        icon=ft.Icons.DELETE_OUTLINE,
-                                        icon_color="white",
-                                        icon_size=20,
-                                        tooltip="Apagar",
-                                        on_click=lambda e, aid=album['id'], nm=album['name']: confirm_delete_album(aid, nm),
-                                        visible=not readonly
-                                    )
-                                ], alignment="spaceBetween", vertical_alignment="center")
+                                padding=ft.padding.only(left=12, right=8, bottom=8, top=40),
+                                content=ft.Column([
+                                    # Título do Álbum
+                                    ft.Text(album['name'], weight="bold", size=16, color="white", max_lines=1, overflow="ellipsis"),
+                                    # Info Secundária e Botão Lixeira na Mesma Linha
+                                    ft.Row([
+                                        ft.Text(f"{photos_count} fotos • {event_date}", size=12, color="white70"),
+                                        ft.Container(expand=True), # Empurra o ícone para a direita
+                                        ft.IconButton(
+                                            icon=ft.Icons.DELETE_OUTLINE,
+                                            icon_color="white",
+                                            icon_size=18,
+                                            tooltip="Apagar Álbum",
+                                            padding=0,
+                                            height=24,
+                                            width=24,
+                                            on_click=lambda e, aid=album['id'], nm=album['name']: confirm_delete_album(aid, nm),
+                                            visible=not readonly
+                                        )
+                                    ], alignment="spaceBetween", vertical_alignment="center")
+                                ], spacing=2, alignment=ft.MainAxisAlignment.END) # Correção aqui
                             )
                         ])
                     )
@@ -392,7 +396,7 @@ def gallery_view(page: ft.Page, db, current_user, show_success, show_error, show
             content=ft.Text(f"Apagar '{name}' e todas as fotos?"),
             actions=[
                 ft.TextButton("Cancelar", on_click=lambda e: page.close(dlg)),
-                ft.TextButton("Apagar", on_del, style=ft.ButtonStyle(color="red"))
+                ft.TextButton("Apagar", on_click=on_del, style=ft.ButtonStyle(color="red"))
             ]
         )
         page.open(dlg)
