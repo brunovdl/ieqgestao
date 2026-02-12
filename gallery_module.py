@@ -2,7 +2,7 @@
 Módulo de Galeria de Fotos
 Gerenciamento de álbuns e fotos com Supabase Storage
 VERSÃO FINAL REFINADA - Flet 0.25.2
-(Visual Limpo + Correção Botões Lightbox)
+(Visual Limpo + Correção Botões Lightbox + Capa do Álbum Dinâmica)
 """
 import flet as ft
 from datetime import datetime
@@ -217,9 +217,27 @@ def gallery_view(page: ft.Page, db, current_user, show_success, show_error, show
             )
         else:
             for album in albums:
-                # Contar fotos
-                photos_count = len(db.get_photos_by_album(album['id']))
+                # Obter fotos para contagem e capa
+                album_photos = db.get_photos_by_album(album['id'])
+                photos_count = len(album_photos)
                 
+                # Definir conteúdo da capa (Foto ou Ícone)
+                if album_photos:
+                    # Usa a primeira foto (mais recente) como capa
+                    cover_url = db.get_photo_url(album_photos[0]['storage_path'])
+                    cover_content = ft.Image(
+                        src=cover_url,
+                        fit="cover",
+                        width=float("inf"),
+                        height=150,
+                        error_content=ft.Icon(ft.Icons.BROKEN_IMAGE, size=40, color="white")
+                    )
+                    cover_alignment = None # Imagem preenche tudo
+                else:
+                    # Placeholder se não houver fotos
+                    cover_content = ft.Icon(ft.Icons.PHOTO_LIBRARY, size=60, color="white")
+                    cover_alignment = ft.alignment.center
+
                 # Formatar data
                 event_date = album.get('event_date', '')
                 if event_date:
@@ -234,11 +252,13 @@ def gallery_view(page: ft.Page, db, current_user, show_success, show_error, show
                         content=ft.Column([
                             # Imagem de capa
                             ft.Container(
-                                content=ft.Icon(ft.Icons.PHOTO_LIBRARY, size=60, color="white"),
+                                content=cover_content,
                                 bgcolor="#1976D2",
                                 height=150,
-                                alignment=ft.alignment.Alignment(0, 0),
-                                border_radius=ft.border_radius.BorderRadius(top_left=10, top_right=10, bottom_left=0, bottom_right=0)
+                                width=300, # Garante largura
+                                alignment=cover_alignment,
+                                border_radius=ft.border_radius.BorderRadius(top_left=10, top_right=10, bottom_left=0, bottom_right=0),
+                                clip_behavior=ft.ClipBehavior.HARD_EDGE # Corta as bordas da imagem
                             ),
                             # Informações
                             ft.Container(
@@ -431,7 +451,8 @@ def gallery_view(page: ft.Page, db, current_user, show_success, show_error, show
                 if count_ref.current:
                     count_ref.current.value = f"{current_index[0] + 1} / {len(current_album_photos_list)}"
                     count_ref.current.update()
-                page.update()
+                # CORREÇÃO: Forçar atualização da página para garantir que a UI reflita a mudança
+                page.update() 
 
         def prev_photo(e=None):
             if current_index[0] > 0:
@@ -443,6 +464,7 @@ def gallery_view(page: ft.Page, db, current_user, show_success, show_error, show
                 if count_ref.current:
                     count_ref.current.value = f"{current_index[0] + 1} / {len(current_album_photos_list)}"
                     count_ref.current.update()
+                # CORREÇÃO: Forçar atualização da página
                 page.update()
         
         # Lógica de Gestos (Swipe)
@@ -462,7 +484,7 @@ def gallery_view(page: ft.Page, db, current_user, show_success, show_error, show
             height=page.height,
         )
 
-        # Overlay (Camadas) - CORRIGIDO: Botões fora do GestureDetector
+        # Overlay (Camadas)
         lightbox_stack = ft.Stack(
             controls=[
                 # 1. Camada de Fundo + Imagem (Captura Swipe)
@@ -492,7 +514,6 @@ def gallery_view(page: ft.Page, db, current_user, show_success, show_error, show
                     alignment=ft.alignment.top_center,
                     padding=ft.padding.only(top=20),
                     # Importante: ignorar toques nesta área para não bloquear o fundo
-                    # (A menos que seja um botão)
                 ),
                 # Botão Anterior (Seta Esquerda)
                 ft.Container(
@@ -581,8 +602,8 @@ def gallery_view(page: ft.Page, db, current_user, show_success, show_error, show
                     content=ft.Image(
                         src=photo_url,
                         fit="cover",
-                        width=250, # Largura responsiva seria melhor, mas fixo é ok para grid
-                        height=160, # Altura ajustada
+                        width=250, 
+                        height=160, # Altura ajustada para card compacto
                         error_content=ft.Icon(ft.Icons.BROKEN_IMAGE, size=40)
                     ),
                     width=250,
@@ -598,7 +619,7 @@ def gallery_view(page: ft.Page, db, current_user, show_success, show_error, show
                     content=ft.Container(
                         content=ft.Column([
                             clickable_image,
-                            # Info e Botões (SEM O NOME DO ARQUIVO)
+                            # Info e Botões (SEM TÍTULO)
                             ft.Container(
                                 content=ft.Column([
                                     # Descrição (só mostra se existir)
