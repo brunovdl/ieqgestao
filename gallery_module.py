@@ -1,8 +1,8 @@
 """
 Módulo de Galeria de Fotos
 Gerenciamento de álbuns e fotos com Supabase Storage
-VERSÃO FINAL SIMPLIFICADA - Flet 0.25.2
-(Navegação apenas por botões - Sem Gestos - Correção de Upload Assíncrono, Calendário e Criação de Álbum)
+VERSÃO FINAL IOS FIX - Flet 0.25.2
+(Correção Seletor iOS + Upload Robusto)
 """
 import flet as ft
 from datetime import datetime
@@ -246,7 +246,7 @@ def gallery_view(page: ft.Page, db, current_user, show_success, show_error, show
                                             visible=not readonly
                                         )
                                     ], alignment="spaceBetween", vertical_alignment="center")
-                                ], spacing=2, alignment=ft.MainAxisAlignment.END) # Correção aqui
+                                ], spacing=2, alignment=ft.MainAxisAlignment.END)
                             )
                         ])
                     )
@@ -610,8 +610,10 @@ def gallery_view(page: ft.Page, db, current_user, show_success, show_error, show
             need_upload = []
             
             for f in files:
-                if f.path: to_process.append({'obj': f, 'path': f.path, 'temp': False})
-                else: need_upload.append(f)
+                if f.path:
+                    to_process.append({'name': f.name, 'path': f.path, 'is_temp': False})
+                else:
+                    need_upload.append(f)
             
             if need_upload:
                 os.makedirs("temp_uploads", exist_ok=True)
@@ -625,10 +627,7 @@ def gallery_view(page: ft.Page, db, current_user, show_success, show_error, show
                 # CORREÇÃO: Removido await porque picker.upload não é awaitable
                 picker.upload(objs)
                 
-                # Esperar pelo upload (simples espera de tempo, ideal seria evento)
-                # Como não temos callback de término fácil aqui sem reestruturar muito,
-                # vamos dar um tempo razoável.
-                # Em produção ideal, usaríamos on_upload para setar um Event.
+                # Esperar pelo upload
                 await asyncio.sleep(2) 
                 
                 after = set(glob.glob("temp_uploads/*"))
@@ -636,32 +635,32 @@ def gallery_view(page: ft.Page, db, current_user, show_success, show_error, show
                 
                 for nf in new_files:
                     f_mock = type('obj', (object,), {'name': os.path.basename(nf)})
-                    to_process.append({'obj': f_mock, 'path': nf, 'temp': True})
+                    to_process.append({'name': f_mock.name, 'path': nf, 'is_temp': True})
 
             count = 0
             total = len(to_process)
             
             for i, item in enumerate(to_process):
-                f = item['obj']
-                path = item['path']
                 try:
-                    info_txt.value = f"Enviando {i+1}/{total}: {f.name}"
+                    info_txt.value = f"Salvando no banco {i+1}/{total}: {item['name']}"
                     prog_bar.value = (i / total)
                     page.update()
                     
-                    with open(path, 'rb') as fo:
+                    with open(item['path'], 'rb') as fo:
                         bits = fo.read()
                     
-                    res = db.upload_photo_to_storage(bits, f.name, album_id)
+                    res = db.upload_photo_to_storage(bits, item['name'], album_id)
                     if res:
                         user = current_user.get('username', 'Desconhecido') if isinstance(current_user, dict) else 'Desconhecido'
-                        db.add_photo(album_id, f.name, res['public_url'], res['storage_path'], desc, user, len(bits))
+                        db.add_photo(album_id, item['name'], res['public_url'], res['storage_path'], desc, user, len(bits))
                         count += 1
-                        if item['temp']: 
-                            try: os.remove(path)
+                        
+                        # Limpeza
+                        if item['is_temp']: 
+                            try: os.remove(item['path'])
                             except: pass
                 except Exception as ex:
-                    print(f"Erro: {ex}")
+                    print(f"Erro ao processar {item['name']}: {ex}")
 
             prog_bar.visible = False
             if count > 0:
@@ -670,6 +669,7 @@ def gallery_view(page: ft.Page, db, current_user, show_success, show_error, show
             else:
                 show_error(page, "Falha no upload.")
                 btn_upload.disabled = False
+                info_txt.value = "Tente novamente."
                 page.update()
 
         btn_upload = ft.ElevatedButton("Enviar", icon=ft.Icons.UPLOAD, disabled=True, 
@@ -678,7 +678,8 @@ def gallery_view(page: ft.Page, db, current_user, show_success, show_error, show
         content = ft.Column([
             ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda e: show_album_photos(album_id)), ft.Text("Upload")]),
             desc_tf,
-            ft.ElevatedButton("Selecionar", icon=ft.Icons.IMAGE, on_click=lambda e: picker.pick_files(allow_multiple=True)),
+            # CORREÇÃO IOS: Usar FilePickerFileType.IMAGE para abrir galeria nativa do iPhone
+            ft.ElevatedButton("Selecionar", icon=ft.Icons.IMAGE, on_click=lambda e: picker.pick_files(allow_multiple=True, file_type=ft.FilePickerFileType.IMAGE)),
             info_txt,
             prog_bar,
             btn_upload
