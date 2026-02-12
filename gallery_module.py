@@ -2,7 +2,7 @@
 Módulo de Galeria de Fotos
 Gerenciamento de álbuns e fotos com Supabase Storage
 VERSÃO FINAL SIMPLIFICADA - Flet 0.25.2
-(Navegação apenas por botões - Sem Gestos - Correção de Upload Assíncrono)
+(Navegação apenas por botões - Sem Gestos - Correção de Upload Assíncrono, Calendário e Criação de Álbum)
 """
 import flet as ft
 from datetime import datetime
@@ -392,7 +392,7 @@ def gallery_view(page: ft.Page, db, current_user, show_success, show_error, show
             content=ft.Text(f"Apagar '{name}' e todas as fotos?"),
             actions=[
                 ft.TextButton("Cancelar", on_click=lambda e: page.close(dlg)),
-                ft.TextButton("Apagar", on_click=on_del, style=ft.ButtonStyle(color="red"))
+                ft.TextButton("Apagar", on_del, style=ft.ButtonStyle(color="red"))
             ]
         )
         page.open(dlg)
@@ -514,10 +514,54 @@ def gallery_view(page: ft.Page, db, current_user, show_success, show_error, show
     def show_create_album_form(e=None):
         name_tf = ft.TextField(label="Nome do Álbum")
         desc_tf = ft.TextField(label="Descrição")
-        date_tf = ft.TextField(label="Data (YYYY-MM-DD)", value=datetime.now().strftime("%Y-%m-%d"))
+        
+        # Pegar a data atual correta
+        data_atual = datetime.now()
+        
+        # --- Configuração do DatePicker ---
+        def on_date_change(e):
+            if date_picker.value:
+                # Atualiza o campo com a data formatada (DD/MM/AAAA)
+                date_tf.value = date_picker.value.strftime("%d/%m/%Y")
+                date_tf.update()
+
+        date_picker = ft.DatePicker(
+            value=data_atual,                      # Define que abre no dia e mês atual
+            first_date=datetime(2000, 1, 1),       # Evita bugar para anos irrealistas (como ano 1900 ou 2050 padrão do sistema)
+            last_date=datetime(2050, 12, 31),
+            on_change=on_date_change,
+            confirm_text="Confirmar",
+            cancel_text="Cancelar",
+            help_text="Selecione a data do evento"
+        )
+        
+        # Adicionar o picker ao overlay da página para que funcione
+        page.overlay.append(date_picker)
+        page.update()
+
+        date_tf = ft.TextField(
+            label="Data do Evento",
+            value=data_atual.strftime("%d/%m/%Y"), # Exibição padrão DD/MM/AAAA BR
+            read_only=True,
+            suffix=ft.IconButton(
+                icon=ft.Icons.CALENDAR_MONTH,
+                on_click=lambda _: date_picker.pick_date(),
+                tooltip="Selecionar data"
+            )
+        )
         
         def save(e):
-            if db.create_album(name_tf.value, desc_tf.value, date_tf.value, current_user['username']):
+            # Converter a data exibida (DD/MM/AAAA) para o formato do banco (YYYY-MM-DD)
+            try:
+                dt_obj = datetime.strptime(date_tf.value, "%d/%m/%Y")
+                formatted_date = dt_obj.strftime("%Y-%m-%d")
+            except Exception:
+                formatted_date = datetime.now().strftime("%Y-%m-%d")
+
+            # MUDANÇA: Obter o nome de usuário de forma segura para evitar KeyError
+            creator_name = current_user.get('username', 'Desconhecido') if isinstance(current_user, dict) else 'Desconhecido'
+
+            if db.create_album(name_tf.value, desc_tf.value, formatted_date, creator_name):
                 show_success(page, "Álbum criado!")
                 show_albums_list()
             else:
