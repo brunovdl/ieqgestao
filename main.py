@@ -22,8 +22,6 @@ def main(page: ft.Page):
     
     db = Database()
     user_state = {"user": None, "full_name": None, "perms": {}, "readonly": False}
-    
-    # Controle da Thread de Notificação (Sininho)
     notification_flag = [False] 
 
     def logout():
@@ -35,10 +33,7 @@ def main(page: ft.Page):
         page.update()
 
     def on_login_success(username_val):
-        # Busca permissões e nome completo
         user_data = db.get_user_permissions(username_val)
-        
-        # Tenta buscar o nome completo no banco, se não tiver usa o user
         full_user_obj = db.supabase.table('users').select('full_name').eq('username', username_val).execute()
         real_name = username_val
         if full_user_obj.data:
@@ -48,7 +43,6 @@ def main(page: ft.Page):
         user_state["full_name"] = real_name
         user_state["perms"] = user_data
         user_state["readonly"] = user_data.get("readonly", True)
-        
         dashboard()
 
     def dashboard():
@@ -56,71 +50,54 @@ def main(page: ft.Page):
         page.overlay.clear()
         content = ft.Container(expand=True, padding=10)
         
-        # Ativa a thread de notificação
         notification_flag[0] = True
         
-        # --- 1. LÓGICA DE SAUDAÇÃO ---
+        # --- REFERÊNCIA DO VÍDEO ---
+        video_ref = ft.Ref[ft.WebView]()
+
+        # --- CONTROLE DE VISIBILIDADE DO VÍDEO (CORREÇÃO DE ERRO) ---
+        def toggle_video(show):
+            """
+            Esconde ou mostra o vídeo para não atrapalhar o menu.
+            O try/except evita o erro 'Control must be added to the page'
+            quando estamos em outras telas que não têm o vídeo.
+            """
+            try:
+                if video_ref.current:
+                    video_ref.current.visible = show
+                    video_ref.current.update()
+            except Exception:
+                # Se o vídeo não estiver na página (ex: estamos na tela de carona), 
+                # ignoramos o erro e seguimos vida.
+                pass
+
+        # --- SAUDAÇÃO ---
         now = datetime.now()
         hour = now.hour
-        
-        # Pega o primeiro nome
         raw_name = user_state.get('full_name', 'Visitante') or "Visitante"
         first_name = raw_name.split()[0].capitalize()
 
-        # Define texto e ícone (SEM QUEBRA DE LINHA \n)
-        if 5 <= hour < 12:
-            greeting_msg = f"Bom dia, {first_name}"
-            icon, color = ft.Icons.WB_SUNNY, "orange"
-        elif 12 <= hour < 18:
-            greeting_msg = f"Boa tarde, {first_name}"
-            icon, color = ft.Icons.WB_SUNNY_OUTLINED, "orange"
-        else:
-            greeting_msg = f"Boa noite, {first_name}"
-            icon, color = ft.Icons.NIGHTLIGHT_ROUND, "blue"
+        if 5 <= hour < 12: greeting_msg = f"Bom dia, {first_name}"; icon, color = ft.Icons.WB_SUNNY, "orange"
+        elif 12 <= hour < 18: greeting_msg = f"Boa tarde, {first_name}"; icon, color = ft.Icons.WB_SUNNY_OUTLINED, "orange"
+        else: greeting_msg = f"Boa noite, {first_name}"; icon, color = ft.Icons.NIGHTLIGHT_ROUND, "blue"
 
-        # --- HEADER DO MENU (CORRIGIDO PARA LINHA ÚNICA) ---
         drawer_header = ft.Container(
             content=ft.Column([
-                get_logo(60), # Logo
-                ft.Container(height=10), # Espaçamento
-                
-                # ALTERADO DE COLUMN PARA ROW (Para ficar na mesma linha)
-                ft.Row([
-                    ft.Icon(icon, color=color, size=20),
-                    ft.Text(greeting_msg, weight="bold", size=13)
-                ], alignment=ft.MainAxisAlignment.CENTER, spacing=8)
-                
-            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=0),
-            
-            bgcolor=ft.colors.SURFACE_VARIANT, 
-            padding=20, 
-            border_radius=12, 
-            margin=10, 
-            alignment=ft.alignment.center
+                get_logo(60),
+                ft.Container(height=10),
+                ft.Row([ft.Icon(icon, color=color, size=20), ft.Text(greeting_msg, weight="bold", size=13)], alignment="center", spacing=8)
+            ], horizontal_alignment="center", spacing=0),
+            bgcolor=ft.colors.SURFACE_VARIANT, padding=20, border_radius=12, margin=10, alignment=ft.alignment.center
         )
         
-        # --- 2. BADGES DE NOTIFICAÇÃO (SININHO DA CARONA) ---
-        
-        # Refs para atualizar o número sem recarregar tudo
+        # --- BADGES ---
         badge_text_ref = ft.Ref[ft.Text]()
-        badge_container_ref = ft.Ref[ft.Container]()      # Menu Lateral
+        badge_container_ref = ft.Ref[ft.Container]()
         mobile_badge_text_ref = ft.Ref[ft.Text]()
-        mobile_badge_container_ref = ft.Ref[ft.Container]() # Header Mobile
+        mobile_badge_container_ref = ft.Ref[ft.Container]()
 
-        # Ícone Especial para o Menu Lateral (Com Badge)
-        carpool_icon_menu = ft.Container(
-            content=ft.Stack([
-                ft.Icon(ft.Icons.DIRECTIONS_CAR),
-                ft.Container(
-                    ref=badge_container_ref,
-                    content=ft.Text(ref=badge_text_ref, value="0", size=10, color="white", weight="bold"),
-                    bgcolor="red", border_radius=10, width=16, height=16, alignment=ft.alignment.center,
-                    top=0, right=0, visible=False 
-                )
-            ], width=24, height=24)
-        )
+        carpool_icon_menu = ft.Container(content=ft.Stack([ft.Icon(ft.Icons.DIRECTIONS_CAR), ft.Container(ref=badge_container_ref, content=ft.Text(ref=badge_text_ref, value="0", size=10, color="white", weight="bold"), bgcolor="red", border_radius=10, width=16, height=16, alignment=ft.alignment.center, top=0, right=0, visible=False)]), width=24, height=24)
 
-        # Definição das Rotas
         all_routes = [
             ("home", ft.Icons.HOME, "Início", home_view),
             ("lista_visitantes", ft.Icons.PEOPLE, "Visitantes", visitors_list_view),
@@ -134,125 +111,91 @@ def main(page: ft.Page):
         perms = user_state["perms"]
         carpool_route_index = -1
         
-        # Filtra rotas permitidas
         for i, (key, icon_or_badge, label, func) in enumerate(all_routes):
             if key in ["home", "carona"] or perms.get(key) or (key == "lista_visitantes" and perms.get("visitantes")):
                 active_routes.append((key, icon_or_badge, label, func))
-                if key == "carona":
-                    carpool_route_index = len(active_routes) - 1
+                if key == "carona": carpool_route_index = len(active_routes) - 1
 
-        # --- 3. THREAD DE ATUALIZAÇÃO DOS BADGES ---
         def update_badge_loop():
             while notification_flag[0]:
                 try:
                     count = db.get_upcoming_rides_count()
                     val_str = str(count) if count < 99 else "99+"
                     is_visible = (count > 0)
-
-                    # Atualiza Menu Lateral
                     if badge_text_ref.current:
-                        badge_text_ref.current.value = val_str
-                        badge_container_ref.current.visible = is_visible
-                    
-                    # Atualiza Header Mobile
+                        badge_text_ref.current.value = val_str; badge_container_ref.current.visible = is_visible
                     if mobile_badge_text_ref.current:
-                        mobile_badge_text_ref.current.value = val_str
-                        mobile_badge_container_ref.current.visible = is_visible
-                        
+                        mobile_badge_text_ref.current.value = val_str; mobile_badge_container_ref.current.visible = is_visible
                     page.update()
                 except: pass
-                time.sleep(10) # Verifica a cada 10s
+                time.sleep(10)
 
         threading.Thread(target=update_badge_loop, daemon=True).start()
 
-        # Navegação (Monta Destinos)
         destinations = []
         for r in active_routes:
-            if isinstance(r[1], ft.Container):
-                destinations.append(ft.NavigationRailDestination(icon_content=r[1], label=r[2]))
-            else:
-                destinations.append(ft.NavigationRailDestination(icon=r[1], label=r[2]))
-        
+            if isinstance(r[1], ft.Container): destinations.append(ft.NavigationRailDestination(icon_content=r[1], label=r[2]))
+            else: destinations.append(ft.NavigationRailDestination(icon=r[1], label=r[2]))
         destinations.append(ft.NavigationRailDestination(icon=ft.Icons.LOGOUT, label="Sair"))
 
-        # Função de Navegação
         def nav(idx):
             if idx == len(active_routes): logout(); return
             rail.selected_index = idx; drawer.selected_index = idx
-            
             key, _, label, func = active_routes[idx]
-            header_title.value = label # Atualiza título Mobile
+            header_title.value = label
             
-            # Injeta user_state se necessário
-            if func in [visitors_list_view, gallery_view, users_view, carpool_view]:
+            # --- INJEÇÃO DE DEPENDÊNCIAS ---
+            # Passamos video_ref para o Home View usar
+            if func == home_view:
+                content.content = func(page, db, user_state["readonly"], webview_ref=video_ref)
+            elif func in [visitors_list_view, gallery_view, users_view, carpool_view]:
                 content.content = func(page, db, user_state, user_state["readonly"])
             else:
                 content.content = func(page, db, user_state["readonly"])
             
-            page.close(drawer); page.update()
+            page.close(drawer)
+            # Reativa o vídeo ao navegar (apenas se ele existir na nova tela)
+            toggle_video(True) 
+            page.update()
 
-        # Componentes de Navegação
-        rail = ft.NavigationRail(
-            selected_index=0, 
-            label_type=ft.NavigationRailLabelType.ALL, 
-            min_width=130, 
-            leading=drawer_header, # Usa o Card com Saudação
-            destinations=destinations, 
-            on_change=lambda e: nav(e.control.selected_index)
-        )
+        rail = ft.NavigationRail(selected_index=0, label_type=ft.NavigationRailLabelType.ALL, min_width=130, leading=drawer_header, destinations=destinations, on_change=lambda e: nav(e.control.selected_index))
         
+        # --- DRAWER ---
         drawer = ft.NavigationDrawer(
             controls=[
                 ft.Container(drawer_header, padding=10), 
                 ft.Divider(thickness=1, color="grey"), 
                 ft.Container(height=10)
             ] + [ft.NavigationDrawerDestination(icon_content=d.icon_content, icon=d.icon, label=d.label) for d in destinations], 
-            on_change=lambda e: nav(e.control.selected_index)
+            
+            on_change=lambda e: nav(e.control.selected_index),
+            # Se clicar fora, tenta reexibir o vídeo (se ele existir)
+            on_dismiss=lambda e: toggle_video(True)
         )
         page.drawer = drawer
 
-        # --- 4. HEADER MOBILE (COM ÍCONE DE NOTIFICAÇÃO) ---
         header_title = ft.Text(active_routes[0][2], size=20, weight="bold", color="white")
-        
-        # Ações do lado direito (Sininho Carona)
         mobile_actions = []
         if carpool_route_index != -1:
-            mobile_actions.append(
-                ft.Container(
-                    content=ft.Stack([
-                        ft.IconButton(
-                            ft.Icons.DIRECTIONS_CAR, 
-                            icon_color="white", 
-                            on_click=lambda e: nav(carpool_route_index)
-                        ),
-                        ft.Container(
-                            ref=mobile_badge_container_ref,
-                            content=ft.Text(ref=mobile_badge_text_ref, value="0", size=10, color="white", weight="bold"),
-                            bgcolor="red", border_radius=10, width=16, height=16, alignment=ft.alignment.center,
-                            top=5, right=5, visible=False
-                        )
-                    ]),
-                    padding=0
-                )
-            )
+            mobile_actions.append(ft.Container(content=ft.Stack([ft.IconButton(ft.Icons.DIRECTIONS_CAR, icon_color="white", on_click=lambda e: nav(carpool_route_index)), ft.Container(ref=mobile_badge_container_ref, content=ft.Text(ref=mobile_badge_text_ref, value="0", size=10, color="white", weight="bold"), bgcolor="red", border_radius=10, width=16, height=16, alignment=ft.alignment.center, top=5, right=5, visible=False)]), padding=0))
+
+        # --- BOTÃO MENU COM PROTEÇÃO ---
+        btn_menu = ft.IconButton(
+            ft.Icons.MENU, 
+            icon_color="white", 
+            on_click=lambda e: (toggle_video(False), page.open(drawer))
+        )
 
         header = ft.Container(
             content=ft.Row([
-                ft.Row([
-                    ft.IconButton(ft.Icons.MENU, icon_color="white", on_click=lambda e: page.open(drawer)), 
-                    header_title
-                ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                
-                ft.Row(mobile_actions, vertical_alignment=ft.CrossAxisAlignment.CENTER)
-                
-            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-            
+                ft.Row([btn_menu, header_title], vertical_alignment="center"), 
+                ft.Row(mobile_actions, vertical_alignment="center")
+            ], alignment="spaceBetween"), 
             bgcolor=Config.THEME_COLOR, 
             padding=ft.padding.symmetric(horizontal=10, vertical=5), 
             shadow=ft.BoxShadow(blur_radius=5)
         )
 
-        # Montagem Layout
         row = ft.Row([rail, ft.VerticalDivider(width=1), content], expand=True, spacing=0)
         page.add(ft.SafeArea(ft.Column([header, ft.Container(row, expand=True)], spacing=0, expand=True), expand=True))
 

@@ -3,11 +3,12 @@ import threading
 import time
 from datetime import datetime
 from core.config import Config
-# Adicione a nova função na importação
 from utils.helpers import get_latest_video_id, show_success, show_error, show_warning, get_logo
 
-def home_view(page, db, readonly=False):
-    # --- CARROSSEL DE FOTOS (Mantido igual) ---
+# MUDANÇA 1: Adicionamos o argumento opcional 'webview_ref'
+def home_view(page, db, readonly=False, webview_ref=None):
+    
+    # --- CARROSSEL DE FOTOS (Mantido) ---
     carousel_photos = db.get_recent_photos(15)
     if not carousel_photos: carousel_photos = ["https://via.placeholder.com/300x200?text=Bem-vindo"] * 6
     
@@ -64,31 +65,25 @@ def home_view(page, db, readonly=False):
     # --- PLAYER DO YOUTUBE EMBUTIDO ---
     clean_id = Config.YOUTUBE_CHANNEL_ID.strip().replace('"', '').replace("'", "") if Config.YOUTUBE_CHANNEL_ID else ""
     
-    # 1. Busca o ID do vídeo mais recente
     video_id = get_latest_video_id(clean_id)
     
-    # 2. Configura o conteúdo do Card
     if video_id:
-        # URL de Embed (IMPORTANTE: usar /embed/ para funcionar direto no app)
         embed_url = f"https://www.youtube.com/embed/{video_id}"
-        
-        # Link para ver todos (caso queira sair)
         streams_url = f"https://www.youtube.com/channel/{clean_id}/streams"
         
-        # Componente WebView para tocar o vídeo
         video_content = ft.Container(
             content=ft.WebView(
+                ref=webview_ref, # MUDANÇA 2: Ligamos a referência aqui
                 url=embed_url,
                 expand=True,
-                # Configurações para permitir fullscreen e autoplay se possível
             ),
             width=float("inf"),
-            height=250, # Altura fixa para o player não sumir
+            height=250, 
             border_radius=8,
-            clip_behavior=ft.ClipBehavior.HARD_EDGE, # Arredonda as bordas do WebView
+            clip_behavior=ft.ClipBehavior.HARD_EDGE, 
+            bgcolor="black" # Fundo preto para quando o vídeo estiver invisível
         )
     else:
-        # Fallback se não achar vídeo (mostra imagem estática ou aviso)
         video_content = ft.Container(
             content=ft.Column([
                 ft.Icon(ft.Icons.VIDEO_LIBRARY, size=50, color="grey"),
@@ -98,16 +93,14 @@ def home_view(page, db, readonly=False):
         )
         streams_url = "https://www.youtube.com/"
 
-    # 3. Montagem do Card
     yt_card = ft.Card(
         content=ft.Container(
             content=ft.Column([
                 ft.Row([
                     ft.Icon(ft.Icons.SMART_DISPLAY, color="red", size=28), 
-                    ft.Text("Último Culto", size=20, weight="bold", color="red")
+                    ft.Text("Youtube", size=20, weight="bold", color="red")
                 ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
                 
-                # AQUI ENTRA O PLAYER
                 video_content,
                 
                 ft.Row([
@@ -119,7 +112,7 @@ def home_view(page, db, readonly=False):
         elevation=5
     )
 
-    # --- AGENDA (Mantido igual) ---
+    # --- AGENDA (Mantido) ---
     agenda_col = ft.Column([], spacing=10)
     WEEKDAYS = {0: "Segunda-feira", 1: "Terça-feira", 2: "Quarta-feira", 3: "Quinta-feira", 4: "Sexta-feira", 5: "Sábado", 6: "Domingo"}
 
@@ -201,12 +194,10 @@ def home_view(page, db, readonly=False):
         page.open(dlg)
 
     refresh_agenda()
-    
-    # --- RETORNO COM WEBVIEW ---
     return ft.ListView([
         ft.Container(content=carousel_row, height=160), 
         ft.Divider(), 
-        yt_card, # Card com WebView
+        yt_card, 
         ft.Divider(), 
         ft.Row([ft.Text("Próximos Eventos", weight="bold", size=16), ft.IconButton(ft.Icons.ADD_CIRCLE, icon_color=Config.THEME_COLOR, on_click=add_ev_dialog) if not readonly else ft.Container()], alignment="spaceBetween"), 
         agenda_col

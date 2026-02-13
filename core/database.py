@@ -318,7 +318,7 @@ class Database:
             print(f"Erro add_ride: {e}")
             return False
 
-    # --- NOVO MÉTODO DE ATUALIZAÇÃO ---
+    # --- MÉTODO DE ATUALIZAÇÃO ---
     def update_ride(self, ride_id, origin, dest, ride_datetime, seats, whatsapp, event_datetime):
         try:
             data = {
@@ -358,6 +358,35 @@ class Database:
             self.supabase.table('rides').update({'passengers': new_passengers, 'available_seats': new_seats}).eq('id', ride_id).execute()
             return True
         except: return False
+
+    # --- REMOVER PASSAGEIRO ---
+    def remove_passenger(self, ride_id, passenger_to_remove, current_passengers_str, current_seats):
+        try:
+            if not current_passengers_str: return False
+            
+            # 1. Transforma a string em lista: "Bruno, Maria" -> ["Bruno", "Maria"]
+            passenger_list = [p.strip() for p in current_passengers_str.split(',') if p.strip()]
+            
+            # 2. Remove o passageiro da lista
+            if passenger_to_remove in passenger_list:
+                passenger_list.remove(passenger_to_remove)
+            else:
+                return False # Passageiro não encontrado na lista
+            
+            # 3. Reconstrói a string e aumenta a vaga
+            new_passengers_str = ", ".join(passenger_list)
+            new_seats = current_seats + 1
+            
+            # 4. Atualiza no banco
+            self.supabase.table('rides').update({
+                'passengers': new_passengers_str,
+                'available_seats': new_seats
+            }).eq('id', ride_id).execute()
+            
+            return True
+        except Exception as e:
+            print(f"Erro remove_passenger: {e}")
+            return False
 
     def delete_ride(self, ride_id):
         try:
