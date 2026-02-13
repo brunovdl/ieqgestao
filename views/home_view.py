@@ -3,10 +3,11 @@ import threading
 import time
 from datetime import datetime
 from core.config import Config
-from utils.helpers import get_youtube_thumbnail, show_success, show_error, show_warning, get_logo
+# Adicione a nova função na importação
+from utils.helpers import get_latest_video_id, show_success, show_error, show_warning, get_logo
 
 def home_view(page, db, readonly=False):
-    # --- CARROSSEL DE FOTOS ---
+    # --- CARROSSEL DE FOTOS (Mantido igual) ---
     carousel_photos = db.get_recent_photos(15)
     if not carousel_photos: carousel_photos = ["https://via.placeholder.com/300x200?text=Bem-vindo"] * 6
     
@@ -60,20 +61,65 @@ def home_view(page, db, readonly=False):
     update_carousel_view(do_update=False)
     if len(carousel_photos) > 1: threading.Thread(target=cycle_carousel, daemon=True).start()
 
-    # --- YOUTUBE ---
+    # --- PLAYER DO YOUTUBE EMBUTIDO ---
     clean_id = Config.YOUTUBE_CHANNEL_ID.strip().replace('"', '').replace("'", "") if Config.YOUTUBE_CHANNEL_ID else ""
-    thumb_src = get_youtube_thumbnail(clean_id)
-    if not thumb_src: thumb_src = "https://img.youtube.com/vi/AKw0E0t2k6c/maxresdefault.jpg"
-    live_url = f"https://www.youtube.com/channel/{clean_id}/live" if clean_id else "https://www.youtube.com/"
-    streams_url = f"https://www.youtube.com/channel/{clean_id}/streams" if clean_id else "https://www.youtube.com/"
+    
+    # 1. Busca o ID do vídeo mais recente
+    video_id = get_latest_video_id(clean_id)
+    
+    # 2. Configura o conteúdo do Card
+    if video_id:
+        # URL de Embed (IMPORTANTE: usar /embed/ para funcionar direto no app)
+        embed_url = f"https://www.youtube.com/embed/{video_id}"
+        
+        # Link para ver todos (caso queira sair)
+        streams_url = f"https://www.youtube.com/channel/{clean_id}/streams"
+        
+        # Componente WebView para tocar o vídeo
+        video_content = ft.Container(
+            content=ft.WebView(
+                url=embed_url,
+                expand=True,
+                # Configurações para permitir fullscreen e autoplay se possível
+            ),
+            width=float("inf"),
+            height=250, # Altura fixa para o player não sumir
+            border_radius=8,
+            clip_behavior=ft.ClipBehavior.HARD_EDGE, # Arredonda as bordas do WebView
+        )
+    else:
+        # Fallback se não achar vídeo (mostra imagem estática ou aviso)
+        video_content = ft.Container(
+            content=ft.Column([
+                ft.Icon(ft.Icons.VIDEO_LIBRARY, size=50, color="grey"),
+                ft.Text("Nenhum vídeo encontrado", color="grey")
+            ], alignment="center", horizontal_alignment="center"),
+            height=200, bgcolor="black12", border_radius=8
+        )
+        streams_url = "https://www.youtube.com/"
 
-    yt_card = ft.Card(content=ft.Container(content=ft.Column([
-        ft.Row([ft.Icon(ft.Icons.SMART_DISPLAY, color="red", size=28), ft.Text("YouTube", size=20, weight="bold", color="red")], vertical_alignment=ft.CrossAxisAlignment.CENTER),
-        ft.Stack([ft.Image(src=thumb_src, width=float("inf"), height=200, fit=ft.ImageFit.COVER, border_radius=8), ft.Container(bgcolor="black54", width=float("inf"), height=200, border_radius=8), ft.Container(content=ft.IconButton(ft.Icons.PLAY_CIRCLE_FILL, icon_color="red", icon_size=60, on_click=lambda e: page.launch_url(live_url)), alignment=ft.alignment.center), ft.Container(content=ft.Text("Ao vivo", color="white", size=12), bottom=10, right=10)], height=200),
-        ft.Row([ft.TextButton("Ver Cultos Anteriores", icon=ft.Icons.VIDEO_LIBRARY, on_click=lambda e: page.launch_url(streams_url), style=ft.ButtonStyle(color=Config.THEME_COLOR))], alignment=ft.MainAxisAlignment.END)
-    ], spacing=10), padding=15), elevation=5)
+    # 3. Montagem do Card
+    yt_card = ft.Card(
+        content=ft.Container(
+            content=ft.Column([
+                ft.Row([
+                    ft.Icon(ft.Icons.SMART_DISPLAY, color="red", size=28), 
+                    ft.Text("Último Culto", size=20, weight="bold", color="red")
+                ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                
+                # AQUI ENTRA O PLAYER
+                video_content,
+                
+                ft.Row([
+                    ft.TextButton("Ver Todos os Cultos", icon=ft.Icons.VIDEO_LIBRARY, on_click=lambda e: page.launch_url(streams_url), style=ft.ButtonStyle(color=Config.THEME_COLOR))
+                ], alignment=ft.MainAxisAlignment.END)
+            ], spacing=10), 
+            padding=15
+        ), 
+        elevation=5
+    )
 
-    # --- AGENDA ---
+    # --- AGENDA (Mantido igual) ---
     agenda_col = ft.Column([], spacing=10)
     WEEKDAYS = {0: "Segunda-feira", 1: "Terça-feira", 2: "Quarta-feira", 3: "Quinta-feira", 4: "Sexta-feira", 5: "Sábado", 6: "Domingo"}
 
@@ -104,7 +150,6 @@ def home_view(page, db, readonly=False):
             agenda_col.controls.append(card)
         page.update()
 
-    # --- DIALOGS ---
     def edit_ev_dialog(ev_data):
         t = ft.TextField(label="Título *", value=ev_data['title'])
         d = ft.TextField(label="Descrição", value=ev_data['description'] or "")
@@ -156,8 +201,13 @@ def home_view(page, db, readonly=False):
         page.open(dlg)
 
     refresh_agenda()
-    return ft.ListView([ft.Container(content=carousel_row, height=160), 
-                        ft.Divider(), yt_card, 
-                        ft.Divider(), 
-                        ft.Row([ft.Text("Próximos Eventos", weight="bold", size=16), 
-                        ft.IconButton(ft.Icons.ADD_CIRCLE, icon_color=Config.THEME_COLOR, on_click=add_ev_dialog) if not readonly else ft.Container()], alignment="spaceBetween"), agenda_col], padding=10, spacing=20, expand=True)
+    
+    # --- RETORNO COM WEBVIEW ---
+    return ft.ListView([
+        ft.Container(content=carousel_row, height=160), 
+        ft.Divider(), 
+        yt_card, # Card com WebView
+        ft.Divider(), 
+        ft.Row([ft.Text("Próximos Eventos", weight="bold", size=16), ft.IconButton(ft.Icons.ADD_CIRCLE, icon_color=Config.THEME_COLOR, on_click=add_ev_dialog) if not readonly else ft.Container()], alignment="spaceBetween"), 
+        agenda_col
+    ], padding=10, spacing=20, expand=True)

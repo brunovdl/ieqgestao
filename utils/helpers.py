@@ -70,6 +70,23 @@ def get_youtube_thumbnail(channel_id):
     except: pass
     return None
 
+def get_latest_video_id(channel_id):
+    if not channel_id: return None
+    clean_id = channel_id.strip().replace('"', '').replace("'", "")
+    url = f"https://www.youtube.com/feeds/videos.xml?channel_id={clean_id}"
+    try:
+        response = requests.get(url, timeout=3)
+        if response.status_code == 200:
+            root = ET.fromstring(response.content)
+            # Namespaces do XML do YouTube
+            ns = {'yt': 'http://www.youtube.com/xml/schemas/2015', 'atom': 'http://www.w3.org/2005/Atom'}
+            entry = root.find('atom:entry', ns)
+            if entry is not None:
+                video_id = entry.find('yt:videoId', ns).text
+                return video_id
+    except: pass
+    return None
+
 def open_whatsapp(phone, name, custom_msg=None):
     if not phone: return ""
     clean = ''.join(filter(str.isdigit, phone))
