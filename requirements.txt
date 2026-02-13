@@ -2,3 +2,4 @@ flet==0.25.2
 supabase
 python-dotenv
 requests
+flet-desktop

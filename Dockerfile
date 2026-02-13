@@ -16,4 +16,4 @@ ENV APP_ENV=production
 EXPOSE 8000
 
 # Comando para iniciar o app (modo Web)
-CMD ["python", "app.py"]
+CMD ["python", "main.py"]
