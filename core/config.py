@@ -12,6 +12,7 @@ class Config:
     SUPABASE_URL = os.getenv("SUPABASE_URL")
     SUPABASE_KEY = os.getenv("SUPABASE_KEY")
     YOUTUBE_CHANNEL_ID = os.getenv("YOUTUBE_CHANNEL_ID")
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY")
     
     # Ambiente
     ENV = os.getenv("APP_ENV", "local")

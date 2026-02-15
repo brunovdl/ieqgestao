@@ -1,8 +1,9 @@
 import flet as ft
 import time
+import threading
 from datetime import datetime
 from core.config import Config
-from utils.helpers import show_loading, hide_loading, show_success, show_error, show_warning, address_form_fields, open_whatsapp
+from utils.helpers import show_loading, hide_loading, show_success, show_error, show_warning, address_form_fields, open_whatsapp, GroqAIService
 
 # --- Form Components ---
 def visitor_form(page, db, vid=None, back_callback=None):
@@ -72,6 +73,89 @@ def visitors_list_view(page, db, user_state, readonly=False):
         view.current.controls.append(visitor_form(page, db, vid, lambda: show_list()))
         page.update()
 
+    # --- DIALOG DE MENSAGEM IA ---
+    def show_ai_greeting_dialog(visitor_name, visitor_phone):
+        """Gera mensagem com IA e exibe dialog para edição e aprovação."""
+        msg_field = ft.TextField(
+            label="Mensagem gerada pela IA",
+            multiline=True,
+            min_lines=4,
+            max_lines=8,
+            value="Gerando mensagem...",
+            read_only=True,
+            col=12
+        )
+        
+        btn_send = ft.ElevatedButton(
+            "Enviar via WhatsApp",
+            icon=ft.Icons.SEND,
+            bgcolor="green",
+            color="white",
+            disabled=True
+        )
+        
+        btn_regenerate = ft.OutlinedButton(
+            "Regenerar",
+            icon=ft.Icons.REFRESH,
+            disabled=True
+        )
+
+        dlg = ft.AlertDialog(
+            title=ft.Row([
+                ft.Icon(ft.Icons.AUTO_AWESOME, color="amber"),
+                ft.Text("Mensagem de Saudação", weight="bold")
+            ]),
+            content=ft.Container(
+                width=450,
+                content=ft.Column([
+                    ft.Text(f"Para: {visitor_name}", size=13, color="grey", italic=True),
+                    msg_field,
+                ], spacing=10)
+            ),
+            actions=[
+                ft.TextButton("Cancelar", on_click=lambda e: page.close(dlg)),
+                btn_regenerate,
+                btn_send,
+            ]
+        )
+        
+        def generate_message():
+            msg_field.value = "Gerando mensagem..."
+            msg_field.read_only = True
+            btn_send.disabled = True
+            btn_regenerate.disabled = True
+            try: page.update()
+            except: pass
+
+            message, error = GroqAIService.generate_greeting(Config.GROQ_API_KEY, visitor_name)
+            
+            if message:
+                msg_field.value = message
+                msg_field.read_only = False
+                btn_send.disabled = False
+                btn_regenerate.disabled = False
+            else:
+                msg_field.value = f"Erro ao gerar mensagem: {error}"
+                btn_regenerate.disabled = False
+            
+            try: page.update()
+            except: pass
+        
+        def send_whatsapp(e):
+            final_msg = msg_field.value
+            if not final_msg or final_msg.startswith("Gerando") or final_msg.startswith("Erro"):
+                show_warning(page, "Mensagem inválida!")
+                return
+            url = open_whatsapp(visitor_phone, visitor_name, final_msg)
+            page.close(dlg)
+            page.launch_url(url)
+        
+        btn_send.on_click = send_whatsapp
+        btn_regenerate.on_click = lambda e: threading.Thread(target=generate_message, daemon=True).start()
+        
+        page.open(dlg)
+        threading.Thread(target=generate_message, daemon=True).start()
+
     def show_list(search_term=""):
         items = db.get_all_visitors()
         if search_term: items = [v for v in items if search_term.lower() in v[1].lower()]
@@ -99,7 +183,16 @@ def visitors_list_view(page, db, user_state, readonly=False):
                 status = ft.IconButton(icon=ft.Icons.HOW_TO_REG, icon_color="orange", on_click=lambda e, x=vid: (db.mark_visitor_contacted(x, user_state.get("user", "?")), show_list(search_term))) if is_mobile else ft.ElevatedButton("Marcar", bgcolor="orange", color="white", height=30, on_click=lambda e, x=vid: (db.mark_visitor_contacted(x, user_state.get("user", "?")), show_list(search_term)))
 
             btns = []
-            if phone: btns.append(ft.IconButton(content=ft.Image(src="https://img.icons8.com/color/48/whatsapp--v1.png", width=24, height=24), url=open_whatsapp(phone, name)))
+            if phone:
+                btns.append(ft.IconButton(content=ft.Image(src="https://img.icons8.com/color/48/whatsapp--v1.png", width=24, height=24), url=open_whatsapp(phone, name, "")))
+                # Botão de gerar mensagem com IA
+                btns.append(ft.IconButton(
+                    ft.Icons.AUTO_AWESOME,
+                    icon_color="amber",
+                    icon_size=20,
+                    tooltip="Gerar mensagem com IA",
+                    on_click=lambda e, n=name, p=phone: show_ai_greeting_dialog(n, p)
+                ))
             if not readonly:
                 btns.append(ft.IconButton(ft.Icons.EDIT, icon_color=Config.THEME_COLOR, icon_size=20, on_click=lambda e, x=vid: nav_to_form(x)))
                 btns.append(ft.IconButton(ft.Icons.DELETE, icon_color="red", icon_size=20, on_click=lambda e, x=vid: (db.delete_visitor(x), show_list(search_term))))

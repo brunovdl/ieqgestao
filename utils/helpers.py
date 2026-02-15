@@ -92,12 +92,15 @@ def open_whatsapp(phone, name, custom_msg=None):
     clean = ''.join(filter(str.isdigit, phone))
     if len(clean) <= 11 and not clean.startswith("55"): clean = "55" + clean
     
-    if custom_msg:
-        msg = urllib.parse.quote(custom_msg)
-    else:
+    # Se custom_msg é None, usa mensagem padrão. Se é string vazia, abre sem mensagem.
+    if custom_msg is None:
         msg = urllib.parse.quote(f"Olá {name}, paz! Sou da IEQ.")
-        
-    return f"https://wa.me/{clean}?text={msg}"
+        return f"https://wa.me/{clean}?text={msg}"
+    elif custom_msg == "":
+        return f"https://wa.me/{clean}"
+    else:
+        msg = urllib.parse.quote(custom_msg)
+        return f"https://wa.me/{clean}?text={msg}"
 
 # --- UI COMPONENTS ---
 
@@ -165,3 +168,54 @@ def address_form_fields(page):
         "uf": uf, 
         "status": status
     }
+
+# --- GROQ AI SERVICE ---
+
+class GroqAIService:
+    BASE_URL = "https://api.groq.com/openai/v1/chat/completions"
+    
+    @staticmethod
+    def generate_greeting(api_key, visitor_name, church_name="IEQ Jd Portugal"):
+        """Gera uma mensagem de saudação personalizada para um visitante."""
+        if not api_key:
+            return None, "Chave da API Groq não configurada."
+        
+        first_name = visitor_name.split()[0].capitalize() if visitor_name else "Visitante"
+        
+        prompt = (
+            f"Gere uma mensagem curta e acolhedora de saudação em português do Brasil para '{first_name}', "
+            f"que visitou a igreja '{church_name}'. "
+            f"A mensagem deve ser calorosa, convidativa para retornar, e mencionar que ficamos felizes com a visita. "
+            f"Máximo 3 frases. Não use emojis excessivos, no máximo 2. "
+            f"Comece com 'Olá {first_name}'."
+        )
+        
+        try:
+            response = requests.post(
+                GroqAIService.BASE_URL,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "llama-3.3-70b-versatile",
+                    "messages": [
+                        {"role": "system", "content": "Você é um assistente de uma igreja evangélica. Gere mensagens acolhedoras e breves."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "temperature": 0.7,
+                    "max_tokens": 200
+                },
+                timeout=15
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                message = data["choices"][0]["message"]["content"].strip()
+                return message, None
+            else:
+                return None, f"Erro da API: {response.status_code}"
+        except requests.exceptions.Timeout:
+            return None, "Timeout ao conectar com a IA."
+        except Exception as ex:
+            return None, f"Erro: {str(ex)}"

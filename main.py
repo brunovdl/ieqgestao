@@ -2,6 +2,7 @@ import flet as ft
 import threading
 import time
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from core.config import Config
 from core.database import Database
 from utils.helpers import get_logo
@@ -25,12 +26,11 @@ def main(page: ft.Page):
     notification_flag = [False] 
 
     def logout():
+        """Volta ao modo público (não à tela de login)."""
         notification_flag[0] = False 
         user_state.update({"user": None, "full_name": None, "perms": {}, "readonly": False})
         page.drawer = None
-        page.clean()
-        page.add(login_view(page, db, on_login_success))
-        page.update()
+        dashboard()
 
     def on_login_success(username_val):
         user_data = db.get_user_permissions(username_val)
@@ -45,39 +45,75 @@ def main(page: ft.Page):
         user_state["readonly"] = user_data.get("readonly", True)
         dashboard()
 
+    def show_login_dialog(e=None):
+        """Abre o login como um dialog sobre o dashboard."""
+        user_field = ft.TextField(label="Usuário", col=12)
+        pwd_field = ft.TextField(label="Senha", password=True, can_reveal_password=True, col=12)
+        
+        def try_login(e):
+            from utils.helpers import show_loading, hide_loading, show_error, show_warning
+            if not user_field.value or not pwd_field.value:
+                show_warning(page, "Preencha tudo!")
+                return
+            
+            if db.check_login(user_field.value, pwd_field.value):
+                page.close(login_dlg)
+                on_login_success(user_field.value)
+            else:
+                show_error(page, "Dados inválidos.")
+        
+        user_field.on_submit = try_login
+        pwd_field.on_submit = try_login
+        
+        login_dlg = ft.AlertDialog(
+            title=ft.Row([
+                get_logo(40),
+                ft.Column([
+                    ft.Text("Login", size=20, weight="bold", color=Config.THEME_COLOR),
+                    ft.Text(Config.APP_TITLE, size=12, color="grey")
+                ], spacing=2)
+            ], spacing=10),
+            content=ft.Container(
+                width=350,
+                content=ft.Column([
+                    ft.ResponsiveRow([user_field, pwd_field]),
+                ], spacing=10)
+            ),
+            actions=[
+                ft.TextButton("Cancelar", on_click=lambda e: page.close(login_dlg)),
+                ft.ElevatedButton("Entrar", on_click=try_login, bgcolor=Config.THEME_COLOR, color="white")
+            ]
+        )
+        page.open(login_dlg)
+
     def dashboard():
         page.clean()
         page.overlay.clear()
         content = ft.Container(expand=True, padding=10)
         
         notification_flag[0] = True
+        is_logged_in = user_state["user"] is not None
         
         # --- REFERÊNCIA DO VÍDEO ---
         video_ref = ft.Ref[ft.WebView]()
 
         # --- CONTROLE DE VISIBILIDADE DO VÍDEO (CORREÇÃO DE ERRO) ---
         def toggle_video(show):
-            """
-            Esconde ou mostra o vídeo para não atrapalhar o menu.
-            O try/except evita o erro 'Control must be added to the page'
-            quando estamos em outras telas que não têm o vídeo.
-            """
             try:
                 if video_ref.current:
                     video_ref.current.visible = show
                     video_ref.current.update()
             except Exception:
-                # Se o vídeo não estiver na página (ex: estamos na tela de carona), 
-                # ignoramos o erro e seguimos vida.
                 pass
 
-        # --- SAUDAÇÃO ---
-        now = datetime.now()
+        # --- SAUDAÇÃO (Horário do Brasil) ---
+        BR_TZ = ZoneInfo("America/Sao_Paulo")
+        now = datetime.now(BR_TZ)
         hour = now.hour
         raw_name = user_state.get('full_name', 'Visitante') or "Visitante"
         first_name = raw_name.split()[0].capitalize()
 
-        if 5 <= hour < 12: greeting_msg = f"Bom dia, {first_name}"; icon, color = ft.Icons.WB_SUNNY, "orange"
+        if 6 <= hour < 12: greeting_msg = f"Bom dia, {first_name}"; icon, color = ft.Icons.WB_SUNNY, "orange"
         elif 12 <= hour < 18: greeting_msg = f"Boa tarde, {first_name}"; icon, color = ft.Icons.WB_SUNNY_OUTLINED, "orange"
         else: greeting_msg = f"Boa noite, {first_name}"; icon, color = ft.Icons.NIGHTLIGHT_ROUND, "blue"
 
@@ -98,23 +134,33 @@ def main(page: ft.Page):
 
         carpool_icon_menu = ft.Container(content=ft.Stack([ft.Icon(ft.Icons.DIRECTIONS_CAR), ft.Container(ref=badge_container_ref, content=ft.Text(ref=badge_text_ref, value="0", size=10, color="white", weight="bold"), bgcolor="red", border_radius=10, width=16, height=16, alignment=ft.alignment.center, top=0, right=0, visible=False)]), width=24, height=24)
 
-        all_routes = [
+        # --- ROTAS PÚBLICAS (sem login) ---
+        public_routes = [
             ("home", ft.Icons.HOME, "Início", home_view),
-            ("lista_visitantes", ft.Icons.PEOPLE, "Visitantes", visitors_list_view),
             ("celulas", ft.Icons.GROUPS, "Casas de Cornélio", cells_view),
-            ("carona", carpool_icon_menu, "Carona Solidária", carpool_view), 
             ("galeria", ft.Icons.PHOTO_LIBRARY, "Galeria", gallery_view),
+        ]
+
+        # --- ROTAS PROTEGIDAS (com login) ---
+        all_protected_routes = [
+            ("lista_visitantes", ft.Icons.PEOPLE, "Visitantes", visitors_list_view),
+            ("carona", carpool_icon_menu, "Carona Solidária", carpool_view), 
             ("usuarios", ft.Icons.SECURITY, "Gestão de Usuários", users_view)
         ]
         
-        active_routes = []
-        perms = user_state["perms"]
+        active_routes = list(public_routes)
         carpool_route_index = -1
         
-        for i, (key, icon_or_badge, label, func) in enumerate(all_routes):
-            if key in ["home", "carona"] or perms.get(key) or (key == "lista_visitantes" and perms.get("visitantes")):
-                active_routes.append((key, icon_or_badge, label, func))
-                if key == "carona": carpool_route_index = len(active_routes) - 1
+        if is_logged_in:
+            perms = user_state["perms"]
+            # Adiciona carona (todos logados têm acesso)
+            active_routes.append(("carona", carpool_icon_menu, "Carona Solidária", carpool_view))
+            carpool_route_index = len(active_routes) - 1
+            
+            for key, icon_or_badge, label, func in all_protected_routes:
+                if key == "carona": continue  # Já adicionado
+                if perms.get(key) or (key == "lista_visitantes" and perms.get("visitantes")):
+                    active_routes.append((key, icon_or_badge, label, func))
 
         def update_badge_loop():
             while notification_flag[0]:
@@ -130,23 +176,34 @@ def main(page: ft.Page):
                 except: pass
                 time.sleep(10)
 
-        threading.Thread(target=update_badge_loop, daemon=True).start()
+        if is_logged_in:
+            threading.Thread(target=update_badge_loop, daemon=True).start()
 
         destinations = []
         for r in active_routes:
             if isinstance(r[1], ft.Container): destinations.append(ft.NavigationRailDestination(icon_content=r[1], label=r[2]))
             else: destinations.append(ft.NavigationRailDestination(icon=r[1], label=r[2]))
-        destinations.append(ft.NavigationRailDestination(icon=ft.Icons.LOGOUT, label="Sair"))
+        
+        # Botão de Sair ou Login no menu lateral
+        if is_logged_in:
+            destinations.append(ft.NavigationRailDestination(icon=ft.Icons.LOGOUT, label="Sair"))
+        else:
+            destinations.append(ft.NavigationRailDestination(icon=ft.Icons.LOGIN, label="Entrar"))
 
         # --- HISTÓRICO DE NAVEGAÇÃO ---
-        nav_history = []  # pilha de índices visitados
-        current_nav_index = [0]  # índice da tela atual
-        is_programmatic_nav = [False]  # flag para evitar loop ao mudar rota
+        nav_history = []
+        current_nav_index = [0]
+        is_programmatic_nav = [False]
 
         def nav(idx, from_back=False):
-            if idx == len(active_routes): logout(); return
+            # Último item = Sair/Login
+            if idx == len(active_routes):
+                if is_logged_in:
+                    logout()
+                else:
+                    show_login_dialog()
+                return
             
-            # Empilha a tela atual no histórico antes de trocar (exceto se é voltar)
             if not from_back and current_nav_index[0] != idx:
                 nav_history.append(current_nav_index[0])
             
@@ -156,19 +213,16 @@ def main(page: ft.Page):
             header_title.value = label
             
             # --- INJEÇÃO DE DEPENDÊNCIAS ---
-            # Passamos video_ref para o Home View usar
             if func == home_view:
-                content.content = func(page, db, user_state["readonly"], webview_ref=video_ref)
+                content.content = func(page, db, True if not is_logged_in else user_state["readonly"], webview_ref=video_ref)
             elif func in [visitors_list_view, gallery_view, users_view, carpool_view]:
-                content.content = func(page, db, user_state, user_state["readonly"])
+                content.content = func(page, db, user_state, True if not is_logged_in else user_state["readonly"])
             else:
-                content.content = func(page, db, user_state["readonly"])
+                content.content = func(page, db, True if not is_logged_in else user_state["readonly"])
             
             page.close(drawer)
-            # Reativa o vídeo ao navegar (apenas se ele existir na nova tela)
             toggle_video(True)
             
-            # Atualiza a rota no navegador para que o botão voltar funcione
             if not from_back:
                 is_programmatic_nav[0] = True
                 page.route = f"/{key}"
@@ -176,12 +230,9 @@ def main(page: ft.Page):
             page.update()
 
         def on_route_change(e):
-            # Se foi navegação programática (por clique no menu), ignora
             if is_programmatic_nav[0]:
                 is_programmatic_nav[0] = False
                 return
-            
-            # O botão voltar do navegador foi pressionado
             if nav_history:
                 prev_idx = nav_history.pop()
                 nav(prev_idx, from_back=True)
@@ -199,15 +250,22 @@ def main(page: ft.Page):
             ] + [ft.NavigationDrawerDestination(icon_content=d.icon_content, icon=d.icon, label=d.label) for d in destinations], 
             
             on_change=lambda e: nav(e.control.selected_index),
-            # Se clicar fora, tenta reexibir o vídeo (se ele existir)
             on_dismiss=lambda e: toggle_video(True)
         )
         page.drawer = drawer
 
         header_title = ft.Text(active_routes[0][2], size=20, weight="bold", color="white")
         mobile_actions = []
-        if carpool_route_index != -1:
+        
+        # Badge da carona (apenas quando logado)
+        if is_logged_in and carpool_route_index != -1:
             mobile_actions.append(ft.Container(content=ft.Stack([ft.IconButton(ft.Icons.DIRECTIONS_CAR, icon_color="white", on_click=lambda e: nav(carpool_route_index)), ft.Container(ref=mobile_badge_container_ref, content=ft.Text(ref=mobile_badge_text_ref, value="0", size=10, color="white", weight="bold"), bgcolor="red", border_radius=10, width=16, height=16, alignment=ft.alignment.center, top=5, right=5, visible=False)]), padding=0))
+        
+        # Botão de Login/Logout no header (mobile)
+        if is_logged_in:
+            mobile_actions.append(ft.IconButton(ft.Icons.LOGOUT, icon_color="white", tooltip="Sair", on_click=lambda e: logout()))
+        else:
+            mobile_actions.append(ft.IconButton(ft.Icons.LOGIN, icon_color="white", tooltip="Entrar", on_click=lambda e: show_login_dialog()))
 
         # --- BOTÃO MENU COM PROTEÇÃO ---
         btn_menu = ft.IconButton(
@@ -235,7 +293,8 @@ def main(page: ft.Page):
         
         page.on_resized = resize; resize(None); nav(0)
 
-    page.add(login_view(page, db, on_login_success))
+    # --- INICIA DIRETO NO DASHBOARD (modo público) ---
+    dashboard()
 
 if __name__ == "__main__":
     import os
