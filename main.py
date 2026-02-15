@@ -138,8 +138,19 @@ def main(page: ft.Page):
             else: destinations.append(ft.NavigationRailDestination(icon=r[1], label=r[2]))
         destinations.append(ft.NavigationRailDestination(icon=ft.Icons.LOGOUT, label="Sair"))
 
-        def nav(idx):
+        # --- HISTÓRICO DE NAVEGAÇÃO ---
+        nav_history = []  # pilha de índices visitados
+        current_nav_index = [0]  # índice da tela atual
+        is_programmatic_nav = [False]  # flag para evitar loop ao mudar rota
+
+        def nav(idx, from_back=False):
             if idx == len(active_routes): logout(); return
+            
+            # Empilha a tela atual no histórico antes de trocar (exceto se é voltar)
+            if not from_back and current_nav_index[0] != idx:
+                nav_history.append(current_nav_index[0])
+            
+            current_nav_index[0] = idx
             rail.selected_index = idx; drawer.selected_index = idx
             key, _, label, func = active_routes[idx]
             header_title.value = label
@@ -155,8 +166,27 @@ def main(page: ft.Page):
             
             page.close(drawer)
             # Reativa o vídeo ao navegar (apenas se ele existir na nova tela)
-            toggle_video(True) 
+            toggle_video(True)
+            
+            # Atualiza a rota no navegador para que o botão voltar funcione
+            if not from_back:
+                is_programmatic_nav[0] = True
+                page.route = f"/{key}"
+                
             page.update()
+
+        def on_route_change(e):
+            # Se foi navegação programática (por clique no menu), ignora
+            if is_programmatic_nav[0]:
+                is_programmatic_nav[0] = False
+                return
+            
+            # O botão voltar do navegador foi pressionado
+            if nav_history:
+                prev_idx = nav_history.pop()
+                nav(prev_idx, from_back=True)
+
+        page.on_route_change = on_route_change
 
         rail = ft.NavigationRail(selected_index=0, label_type=ft.NavigationRailLabelType.ALL, min_width=130, leading=drawer_header, destinations=destinations, on_change=lambda e: nav(e.control.selected_index))
         

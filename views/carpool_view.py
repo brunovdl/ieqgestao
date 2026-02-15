@@ -70,8 +70,8 @@ def carpool_view(page, db, user_state, readonly=False):
                 init_time_val = dt_obj.strftime("%H:%M")
             except: pass
 
-        cep_field = ft.TextField(label="CEP", value=init_cep, max_length=8, keyboard_type=ft.KeyboardType.NUMBER, col=4)
-        bairro_field = ft.TextField(label="Bairro de Saída", value=init_bairro, expand=True, col=8)
+        cep_field = ft.TextField(label="CEP", value=init_cep, max_length=8, keyboard_type=ft.KeyboardType.NUMBER, text_align=ft.TextAlign.LEFT, col=5)
+        bairro_field = ft.TextField(label="Bairro de Saída", value=init_bairro, expand=True, col=7)
         btn_busca_cep = ft.IconButton(icon=ft.Icons.SEARCH, tooltip="Buscar CEP", col=2)
         
         def buscar_cep(e):
@@ -109,12 +109,21 @@ def carpool_view(page, db, user_state, readonly=False):
             dt_txt.update(); btn_calendar.update()
 
         dd_destinos.on_change = on_dest_change
-        vagas = ft.TextField(label="Vagas", value=init_vagas, keyboard_type=ft.KeyboardType.NUMBER, col=6)
-        whats = ft.TextField(label="Seu WhatsApp", value=init_whats, icon=ft.Icons.PHONE, keyboard_type=ft.KeyboardType.PHONE, col=6)
+        vagas = ft.TextField(label="Vagas", value=init_vagas, keyboard_type=ft.KeyboardType.NUMBER, col=3)
+        whats = ft.TextField(label="Seu WhatsApp", value=init_whats, icon=ft.Icons.PHONE, keyboard_type=ft.KeyboardType.PHONE, col=9)
+
+        # Texto de validação inline (visível dentro do dialog)
+        validation_text = ft.Text("", color="red", size=13, visible=False)
+
+        def show_form_error(msg):
+            validation_text.value = msg
+            validation_text.visible = True
+            validation_text.update()
 
         def save(e):
+            validation_text.visible = False
             if not bairro_field.value or not hora_saida.value:
-                show_warning(page, "Preencha Bairro e Horário!"); return
+                show_form_error("⚠ Preencha Bairro e Horário!"); return
             
             key = dd_destinos.value
             dest_name = edit_data['destination'] if edit_data and not key else ""
@@ -131,12 +140,12 @@ def carpool_view(page, db, user_state, readonly=False):
                         dest_name = f"Célula: {info['data'][1]}"
                         event_dt_iso = None 
 
-            if not dest_name: show_warning(page, "Selecione um destino!"); return
+            if not dest_name: show_form_error("⚠ Selecione um destino!"); return
 
             try:
                 ride_dt_naive = datetime.strptime(f"{dt_txt.value} {hora_saida.value}", "%d/%m/%Y %H:%M")
                 ride_dt_aware = ride_dt_naive.replace(tzinfo=BR_TZ)
-            except ValueError: show_error(page, "Data ou Hora inválida!"); return
+            except ValueError: show_form_error("⚠ Data ou Hora inválida!"); return
 
             driver_display_name = user_state.get('full_name', user_state.get('user', 'Anônimo'))
             
@@ -151,7 +160,7 @@ def carpool_view(page, db, user_state, readonly=False):
                     page.close(dlg); last_data_snapshot[0] = None; refresh_list()
                 else: show_error(page, "Erro ao salvar.")
 
-        dlg = ft.AlertDialog(title=ft.Text(form_title), content=ft.Container(width=500, content=ft.Column([ft.Text("Destino e Data", weight="bold"), ft.ResponsiveRow([dd_destinos]), ft.ResponsiveRow([dt_txt, btn_calendar, hora_saida], vertical_alignment="center"), ft.Divider(), ft.Text("Origem", weight="bold"), ft.ResponsiveRow([cep_field, btn_busca_cep, bairro_field], vertical_alignment="center"), ft.Divider(), ft.Text("Detalhes", weight="bold"), ft.ResponsiveRow([vagas, whats])], scroll="auto")), actions=[ft.TextButton("Cancelar", on_click=lambda e: page.close(dlg)), ft.ElevatedButton("Salvar", on_click=save, bgcolor=Config.THEME_COLOR, color="white")])
+        dlg = ft.AlertDialog(title=ft.Text(form_title), content=ft.Container(width=500, content=ft.Column([validation_text, ft.Text("Destino e Data", weight="bold"), ft.ResponsiveRow([dd_destinos]), ft.ResponsiveRow([dt_txt, btn_calendar, hora_saida], vertical_alignment="center"), ft.Divider(), ft.Text("Origem", weight="bold"), ft.ResponsiveRow([cep_field, btn_busca_cep, bairro_field], vertical_alignment="center"), ft.Divider(), ft.Text("Detalhes", weight="bold"), ft.ResponsiveRow([vagas, whats])], scroll="auto")), actions=[ft.TextButton("Cancelar", on_click=lambda e: page.close(dlg)), ft.ElevatedButton("Salvar", on_click=save, bgcolor=Config.THEME_COLOR, color="white")])
         page.open(dlg)
 
     # --- LISTAGEM OTIMIZADA ---
@@ -260,7 +269,7 @@ def carpool_view(page, db, user_state, readonly=False):
                     ft.Container(content=ft.Text(f"{seats} vagas", color="white", size=12), bgcolor="orange" if seats < 2 else "green", padding=5, border_radius=5)
                 ]),
                 ft.Divider(height=10, color="transparent"),
-                ft.Row([ft.Icon(ft.Icons.PIN_DROP, size=14, color="grey"), ft.Text(f"Sai de: {orig}", size=13)]),
+                ft.Row([ft.Icon(ft.Icons.PIN_DROP, size=14, color="grey"), ft.Text(f"Sai de: {orig}", size=13, expand=True, no_wrap=False)]),
                 ft.Row([ft.Icon(ft.Icons.ACCESS_TIME, size=14, color="grey"), ft.Text(ride_dt_display, weight="bold", size=13, color="blue")]),
                 ft.Container(height=5),
                 ft.Text("Passageiros:", size=11, weight="bold", color="grey"),
