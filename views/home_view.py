@@ -1,9 +1,10 @@
 import flet as ft
 import threading
 import time
+import urllib.parse
 from datetime import datetime
 from core.config import Config
-from utils.helpers import get_latest_video_id, show_success, show_error, show_warning, get_logo
+from utils.helpers import get_latest_video_id, show_success, show_error, show_warning, get_logo, GroqAIService
 
 # MUDANÇA 1: Adicionamos o argumento opcional 'webview_ref'
 def home_view(page, db, readonly=False, webview_ref=None):
@@ -116,6 +117,97 @@ def home_view(page, db, readonly=False, webview_ref=None):
     agenda_col = ft.Column([], spacing=10)
     WEEKDAYS = {0: "Segunda-feira", 1: "Terça-feira", 2: "Quarta-feira", 3: "Quinta-feira", 4: "Sexta-feira", 5: "Sábado", 6: "Domingo"}
 
+    # --- DIALOG DE POST DE EVENTO COM IA ---
+    def show_event_post_dialog(ev):
+        """Gera post de divulgação com IA e exibe dialog para edição e compartilhamento."""
+        d_obj = datetime.strptime(ev['event_date'], "%Y-%m-%d")
+        t_obj = datetime.strptime(ev['event_time'], "%H:%M:%S")
+        date_formatted = f"{WEEKDAYS[d_obj.weekday()]}, {d_obj.strftime('%d/%m/%Y')}"
+        time_formatted = t_obj.strftime('%H:%M')
+        
+        msg_field = ft.TextField(
+            label="Post gerado pela IA",
+            multiline=True,
+            min_lines=5,
+            max_lines=10,
+            value="Gerando post...",
+            read_only=True
+        )
+        
+        btn_share = ft.ElevatedButton(
+            "Compartilhar",
+            icon=ft.Icons.SHARE,
+            bgcolor="green",
+            color="white",
+            disabled=True
+        )
+        
+        btn_regenerate = ft.OutlinedButton(
+            "Regenerar",
+            icon=ft.Icons.REFRESH,
+            disabled=True
+        )
+
+        dlg = ft.AlertDialog(
+            title=ft.Row([
+                ft.Icon(ft.Icons.AUTO_AWESOME, color="amber"),
+                ft.Text("Post de Divulgação", weight="bold")
+            ]),
+            content=ft.Container(
+                width=450,
+                content=ft.Column([
+                    ft.Text(f"Evento: {ev['title']}", size=13, color="grey", italic=True),
+                    msg_field,
+                ], spacing=10)
+            ),
+            actions=[
+                ft.TextButton("Cancelar", on_click=lambda e: page.close(dlg)),
+                btn_regenerate,
+                btn_share,
+            ]
+        )
+        
+        def generate_post():
+            msg_field.value = "Gerando post..."
+            msg_field.read_only = True
+            btn_share.disabled = True
+            btn_regenerate.disabled = True
+            try: page.update()
+            except: pass
+
+            message, error = GroqAIService.generate_event_post(
+                Config.GROQ_API_KEY, ev['title'], ev.get('description', ''),
+                date_formatted, time_formatted, ev.get('location', '')
+            )
+            
+            if message:
+                msg_field.value = message
+                msg_field.read_only = False
+                btn_share.disabled = False
+                btn_regenerate.disabled = False
+            else:
+                msg_field.value = f"Erro ao gerar post: {error}"
+                btn_regenerate.disabled = False
+            
+            try: page.update()
+            except: pass
+        
+        def share_whatsapp(e):
+            final_msg = msg_field.value
+            if not final_msg or final_msg.startswith("Gerando") or final_msg.startswith("Erro"):
+                show_warning(page, "Post inválido!")
+                return
+            encoded = urllib.parse.quote(final_msg)
+            url = f"https://wa.me/?text={encoded}"
+            page.close(dlg)
+            page.launch_url(url)
+        
+        btn_share.on_click = share_whatsapp
+        btn_regenerate.on_click = lambda e: threading.Thread(target=generate_post, daemon=True).start()
+        
+        page.open(dlg)
+        threading.Thread(target=generate_post, daemon=True).start()
+
     def refresh_agenda():
         events = db.get_upcoming_events()
         agenda_col.controls.clear()
@@ -131,6 +223,7 @@ def home_view(page, db, readonly=False, webview_ref=None):
             actions = ft.Container()
             if not readonly:
                 actions = ft.Column([
+                    ft.IconButton(ft.Icons.AUTO_AWESOME, icon_color="amber", icon_size=20, tooltip="Gerar post com IA", on_click=lambda e, x=ev: show_event_post_dialog(x)),
                     ft.IconButton(ft.Icons.EDIT, icon_color=Config.THEME_COLOR, tooltip="Editar", on_click=lambda e, x=ev: edit_ev_dialog(x)),
                     ft.IconButton(ft.Icons.DELETE, icon_color="red", tooltip="Excluir", on_click=lambda e, x=ev['id']: (db.delete_event(x), refresh_agenda(), show_success(page, "Removido!")))
                 ], spacing=0)

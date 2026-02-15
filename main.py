@@ -45,47 +45,6 @@ def main(page: ft.Page):
         user_state["readonly"] = user_data.get("readonly", True)
         dashboard()
 
-    def show_login_dialog(e=None):
-        """Abre o login como um dialog sobre o dashboard."""
-        user_field = ft.TextField(label="Usuário", col=12)
-        pwd_field = ft.TextField(label="Senha", password=True, can_reveal_password=True, col=12)
-        
-        def try_login(e):
-            from utils.helpers import show_loading, hide_loading, show_error, show_warning
-            if not user_field.value or not pwd_field.value:
-                show_warning(page, "Preencha tudo!")
-                return
-            
-            if db.check_login(user_field.value, pwd_field.value):
-                page.close(login_dlg)
-                on_login_success(user_field.value)
-            else:
-                show_error(page, "Dados inválidos.")
-        
-        user_field.on_submit = try_login
-        pwd_field.on_submit = try_login
-        
-        login_dlg = ft.AlertDialog(
-            title=ft.Row([
-                get_logo(40),
-                ft.Column([
-                    ft.Text("Login", size=20, weight="bold", color=Config.THEME_COLOR),
-                    ft.Text(Config.APP_TITLE, size=12, color="grey")
-                ], spacing=2)
-            ], spacing=10),
-            content=ft.Container(
-                width=350,
-                content=ft.Column([
-                    ft.ResponsiveRow([user_field, pwd_field]),
-                ], spacing=10)
-            ),
-            actions=[
-                ft.TextButton("Cancelar", on_click=lambda e: page.close(login_dlg)),
-                ft.ElevatedButton("Entrar", on_click=try_login, bgcolor=Config.THEME_COLOR, color="white")
-            ]
-        )
-        page.open(login_dlg)
-
     def dashboard():
         page.clean()
         page.overlay.clear()
@@ -105,6 +64,44 @@ def main(page: ft.Page):
                     video_ref.current.update()
             except Exception:
                 pass
+
+        def show_login_dialog(e=None):
+            """Abre o login como um dialog compacto, escondendo o vídeo."""
+            toggle_video(False)
+            
+            user_field = ft.TextField(label="Usuário", dense=True)
+            pwd_field = ft.TextField(label="Senha", password=True, can_reveal_password=True, dense=True)
+            
+            def try_login(e):
+                from utils.helpers import show_error, show_warning
+                if not user_field.value or not pwd_field.value:
+                    show_warning(page, "Preencha tudo!")
+                    return
+                if db.check_login(user_field.value, pwd_field.value):
+                    page.close(login_dlg)
+                    on_login_success(user_field.value)
+                else:
+                    show_error(page, "Dados inválidos.")
+            
+            user_field.on_submit = try_login
+            pwd_field.on_submit = try_login
+            
+            login_dlg = ft.AlertDialog(
+                title=ft.Row([
+                    get_logo(30),
+                    ft.Text("Entrar", size=18, weight="bold", color=Config.THEME_COLOR)
+                ], spacing=8),
+                content=ft.Container(
+                    width=280,
+                    content=ft.Column([user_field, pwd_field], spacing=10, tight=True)
+                ),
+                actions=[
+                    ft.TextButton("Cancelar", on_click=lambda e: (page.close(login_dlg), toggle_video(True))),
+                    ft.ElevatedButton("Entrar", on_click=try_login, bgcolor=Config.THEME_COLOR, color="white")
+                ],
+                on_dismiss=lambda e: toggle_video(True)
+            )
+            page.open(login_dlg)
 
         # --- SAUDAÇÃO (Horário do Brasil) ---
         BR_TZ = ZoneInfo("America/Sao_Paulo")

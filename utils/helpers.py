@@ -175,21 +175,10 @@ class GroqAIService:
     BASE_URL = "https://api.groq.com/openai/v1/chat/completions"
     
     @staticmethod
-    def generate_greeting(api_key, visitor_name, church_name="IEQ Jd Portugal"):
-        """Gera uma mensagem de saudação personalizada para um visitante."""
+    def _call_groq(api_key, system_msg, user_prompt, max_tokens=250):
+        """Chamada genérica à API Groq."""
         if not api_key:
             return None, "Chave da API Groq não configurada."
-        
-        first_name = visitor_name.split()[0].capitalize() if visitor_name else "Visitante"
-        
-        prompt = (
-            f"Gere uma mensagem curta e acolhedora de saudação em português do Brasil para '{first_name}', "
-            f"que visitou a igreja '{church_name}'. "
-            f"A mensagem deve ser calorosa, convidativa para retornar, e mencionar que ficamos felizes com a visita. "
-            f"Máximo 3 frases. Não use emojis excessivos, no máximo 2. "
-            f"Comece com 'Olá {first_name}'."
-        )
-        
         try:
             response = requests.post(
                 GroqAIService.BASE_URL,
@@ -200,15 +189,14 @@ class GroqAIService:
                 json={
                     "model": "llama-3.3-70b-versatile",
                     "messages": [
-                        {"role": "system", "content": "Você é um assistente de uma igreja evangélica. Gere mensagens acolhedoras e breves."},
-                        {"role": "user", "content": prompt}
+                        {"role": "system", "content": system_msg},
+                        {"role": "user", "content": user_prompt}
                     ],
                     "temperature": 0.7,
-                    "max_tokens": 200
+                    "max_tokens": max_tokens
                 },
                 timeout=15
             )
-            
             if response.status_code == 200:
                 data = response.json()
                 message = data["choices"][0]["message"]["content"].strip()
@@ -219,3 +207,41 @@ class GroqAIService:
             return None, "Timeout ao conectar com a IA."
         except Exception as ex:
             return None, f"Erro: {str(ex)}"
+    
+    @staticmethod
+    def generate_greeting(api_key, visitor_name, church_name="IEQ Jd Portugal"):
+        """Gera uma mensagem de saudacao personalizada para um visitante."""
+        first_name = visitor_name.split()[0].capitalize() if visitor_name else "Visitante"
+        
+        system_msg = (
+            "Voce e um assistente de uma igreja evangelica. Gere mensagens acolhedoras e breves. "
+            "NAO use emojis. Escreva apenas texto puro sem nenhum caractere especial ou emoji."
+        )
+        prompt = (
+            f"Gere uma mensagem curta e acolhedora de saudacao em portugues do Brasil para '{first_name}', "
+            f"que visitou a igreja '{church_name}'. "
+            f"A mensagem deve ser calorosa, convidativa para retornar, e mencionar que ficamos felizes com a visita. "
+            f"Maximo 3 frases. Comece com 'Ola {first_name}'. NAO use emojis."
+        )
+        return GroqAIService._call_groq(api_key, system_msg, prompt, 200)
+    
+    @staticmethod
+    def generate_event_post(api_key, title, description, date_str, time_str, location, church_name="IEQ Jd Portugal"):
+        """Gera um post de divulgacao de evento para compartilhar no WhatsApp."""
+        system_msg = (
+            "Voce e um assistente de comunicacao de uma igreja evangelica. Crie posts de divulgacao de eventos "
+            "formatados para WhatsApp. NAO use emojis. Escreva apenas texto puro. "
+            "Use negrito do WhatsApp com *texto* e italico com _texto_."
+        )
+        prompt = (
+            f"Crie um post de divulgacao para WhatsApp do evento da igreja '{church_name}':\n"
+            f"- Titulo: {title}\n"
+            f"- Descricao: {description or 'Nao informada'}\n"
+            f"- Data: {date_str}\n"
+            f"- Horario: {time_str}\n"
+            f"- Local: {location or church_name}\n\n"
+            f"O post deve ser chamativo, convidativo e bem formatado para WhatsApp. "
+            f"NAO use emojis. Use apenas texto e formatacao do WhatsApp (*negrito* e _italico_). "
+            f"Inclua uma chamada final convidando as pessoas. Maximo 8 linhas."
+        )
+        return GroqAIService._call_groq(api_key, system_msg, prompt, 300)
