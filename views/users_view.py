@@ -8,12 +8,15 @@ from utils.helpers import show_success, show_error, show_warning
 # Define o Fuso Horário Brasileiro
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 
+ITEMS_PER_PAGE = 10
+
 def users_view(page, db, user_state, readonly=False):
     # Verifica permissão (apenas Admin deve ver isso)
     if readonly: 
         return ft.Center(ft.Text("Acesso Negado. Apenas administradores.", color="red", weight="bold"))
     
     view = ft.Ref[ft.Column]()
+    current_page = [0]  # Página atual (0-indexed)
 
     # --- LISTAGEM ---
     def show_list(search_term=""):
@@ -23,18 +26,31 @@ def users_view(page, db, user_state, readonly=False):
             st = search_term.lower()
             items = [u for u in items if st in u[1].lower() or st in u[2].lower()]
 
+        total_items = len(items)
+        total_pages = max(1, (total_items + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE)
+        
+        # Garante que a página atual é válida
+        if current_page[0] >= total_pages:
+            current_page[0] = total_pages - 1
+        if current_page[0] < 0:
+            current_page[0] = 0
+
+        # Fatia os itens para a página atual
+        start_idx = current_page[0] * ITEMS_PER_PAGE
+        end_idx = start_idx + ITEMS_PER_PAGE
+        page_items = items[start_idx:end_idx]
+
         columns = [
             ft.DataColumn(ft.Text("Nome")),
             ft.DataColumn(ft.Text("Usuário")),
             ft.DataColumn(ft.Text("Perfil")),
             ft.DataColumn(ft.Text("Acesso Visitantes")),
-            ft.DataColumn(ft.Text("Último Login (BR)")), # Nova Coluna
+            ft.DataColumn(ft.Text("Último Login (BR)")),
             ft.DataColumn(ft.Text("Ações")),
         ]
         
         rows = []
-        for u in items:
-            # Desempacota os dados vindos do database.py
+        for u in page_items:
             # Estrutura: id, username, full_name, email, is_admin, permissions, created_at, last_login
             uid, uname, fname, email, is_adm, perms_json, created, last_login = u
             
@@ -54,17 +70,11 @@ def users_view(page, db, user_state, readonly=False):
             last_login_display = "-"
             if last_login:
                 try:
-                    # Converte string ISO para objeto datetime
-                    # O replace garante que o python entenda que o 'Z' ou falta dele é UTC
                     dt_utc = datetime.fromisoformat(last_login.replace('Z', '+00:00'))
-                    
-                    # Converte para o fuso do Brasil
                     dt_br = dt_utc.astimezone(BR_TZ)
-                    
-                    # Formata para string legível
                     last_login_display = dt_br.strftime("%d/%m/%Y às %H:%M")
                 except Exception:
-                    last_login_display = last_login # Fallback se falhar
+                    last_login_display = last_login
 
             actions = ft.Row([
                 ft.IconButton(ft.Icons.EDIT, icon_color=Config.THEME_COLOR, tooltip="Editar", on_click=lambda e, x=uid: show_form(x)),
@@ -76,7 +86,7 @@ def users_view(page, db, user_state, readonly=False):
                 ft.DataCell(ft.Text(uname)),
                 ft.DataCell(role_badge),
                 ft.DataCell(vis_icon),
-                ft.DataCell(ft.Text(last_login_display, size=12)), # Exibe data formatada
+                ft.DataCell(ft.Text(last_login_display, size=12)),
                 ft.DataCell(actions),
             ]))
 
@@ -88,17 +98,62 @@ def users_view(page, db, user_state, readonly=False):
             data_row_min_height=50
         )
         
+        # --- CONTROLES DE PAGINAÇÃO ---
+        def go_prev(e):
+            if current_page[0] > 0:
+                current_page[0] -= 1
+                show_list(search_field.value)
+
+        def go_next(e):
+            if current_page[0] < total_pages - 1:
+                current_page[0] += 1
+                show_list(search_field.value)
+
+        pagination_row = ft.Row([
+            ft.Text(f"{total_items} usuário(s)", size=12, color="grey", italic=True),
+            ft.Container(expand=True),
+            ft.IconButton(
+                ft.Icons.CHEVRON_LEFT,
+                icon_color=Config.THEME_COLOR if current_page[0] > 0 else "grey",
+                disabled=current_page[0] <= 0,
+                on_click=go_prev,
+                tooltip="Página anterior",
+            ),
+            ft.Container(
+                content=ft.Text(f"{current_page[0] + 1} / {total_pages}", size=13, weight="bold"),
+                padding=ft.padding.symmetric(horizontal=12, vertical=4),
+                border=ft.border.all(1, ft.colors.OUTLINE_VARIANT),
+                border_radius=8,
+            ),
+            ft.IconButton(
+                ft.Icons.CHEVRON_RIGHT,
+                icon_color=Config.THEME_COLOR if current_page[0] < total_pages - 1 else "grey",
+                disabled=current_page[0] >= total_pages - 1,
+                on_click=go_next,
+                tooltip="Próxima página",
+            ),
+        ], alignment=ft.MainAxisAlignment.CENTER, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
         # Botões do Header
         add_btn = ft.ElevatedButton("Novo Usuário", icon=ft.Icons.ADD, on_click=lambda e: show_form(), style=ft.ButtonStyle(bgcolor=Config.THEME_COLOR, color="white"))
         
         view.current.controls = [
             ft.Row([add_btn, search_field], alignment="spaceBetween"), 
             ft.Divider(), 
-            ft.Row([table], scroll="always", expand=True, vertical_alignment="start")
+            ft.Row([table], scroll="always", expand=True, vertical_alignment="start"),
+            pagination_row,
         ]
         page.update()
 
-    search_field = ft.TextField(hint_text="Buscar usuário...", prefix_icon=ft.Icons.SEARCH, width=250, height=40, content_padding=10, border_radius=20, on_change=lambda e: show_list(e.control.value))
+    def on_search_change(e):
+        current_page[0] = 0
+        show_list(e.control.value)
+
+    search_field = ft.TextField(
+        hint_text="Buscar usuário...", prefix_icon=ft.Icons.SEARCH, width=250, height=40, 
+        content_padding=10, border_radius=20, 
+        on_change=on_search_change
+    )
 
     # --- FORMULÁRIO ---
     def show_form(uid=None):
@@ -132,9 +187,6 @@ def users_view(page, db, user_state, readonly=False):
                 show_warning(page, "Senha é obrigatória para novos usuários!")
                 return
 
-            # Estrutura de permissões padrão
-            # Carona agora é padrão para todos, não precisa estar aqui explicitamente se for true no backend, 
-            # mas garantimos que admins tenham tudo.
             perms_dict = {
                 "visitantes": vis.value, 
                 "celulas": True, 
@@ -143,14 +195,12 @@ def users_view(page, db, user_state, readonly=False):
             }
             
             if uid:
-                # Update
                 if db.update_user(uid, u.value, p.value, adm.value, perms_dict, fn.value, em.value, ph.value):
                     show_success(page, "Usuário atualizado!")
                     show_list()
                 else:
                     show_error(page, "Erro ao atualizar.")
             else:
-                # Create
                 if db.add_user(u.value, p.value, adm.value, perms_dict, fn.value, em.value, ph.value): 
                     show_success(page, "Usuário criado!")
                     show_list()

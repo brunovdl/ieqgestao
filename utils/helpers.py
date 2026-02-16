@@ -75,7 +75,7 @@ def get_latest_video_id(channel_id):
     clean_id = channel_id.strip().replace('"', '').replace("'", "")
     url = f"https://www.youtube.com/feeds/videos.xml?channel_id={clean_id}"
     try:
-        response = requests.get(url, timeout=3)
+        response = requests.get(url, timeout=10)
         if response.status_code == 200:
             root = ET.fromstring(response.content)
             # Namespaces do XML do YouTube
@@ -84,7 +84,8 @@ def get_latest_video_id(channel_id):
             if entry is not None:
                 video_id = entry.find('yt:videoId', ns).text
                 return video_id
-    except: pass
+    except Exception as e:
+        print(f"Erro ao buscar vídeo do YouTube: {e}")
     return None
 
 def open_whatsapp(phone, name, custom_msg=None):
@@ -94,13 +95,13 @@ def open_whatsapp(phone, name, custom_msg=None):
     
     # Se custom_msg é None, usa mensagem padrão. Se é string vazia, abre sem mensagem.
     if custom_msg is None:
-        msg = urllib.parse.quote(f"Olá {name}, paz! Sou da IEQ.")
-        return f"https://wa.me/{clean}?text={msg}"
+        msg = urllib.parse.quote_plus(f"Olá {name}, paz! Sou da IEQ.")
+        return f"https://api.whatsapp.com/send?phone={clean}&text={msg}"
     elif custom_msg == "":
-        return f"https://wa.me/{clean}"
+        return f"https://api.whatsapp.com/send?phone={clean}"
     else:
-        msg = urllib.parse.quote(custom_msg)
-        return f"https://wa.me/{clean}?text={msg}"
+        msg = urllib.parse.quote_plus(custom_msg)
+        return f"https://api.whatsapp.com/send?phone={clean}&text={msg}"
 
 # --- UI COMPONENTS ---
 
@@ -187,7 +188,7 @@ class GroqAIService:
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "llama-3.3-70b-versatile",
+                    "model": "openai/gpt-oss-120b",
                     "messages": [
                         {"role": "system", "content": system_msg},
                         {"role": "user", "content": user_prompt}
@@ -215,13 +216,14 @@ class GroqAIService:
         
         system_msg = (
             "Voce e um assistente de uma igreja evangelica. Gere mensagens acolhedoras e breves. "
-            "NAO use emojis. Escreva apenas texto puro sem nenhum caractere especial ou emoji."
+            "USE emojis moderadamente."
         )
         prompt = (
             f"Gere uma mensagem curta e acolhedora de saudacao em portugues do Brasil para '{first_name}', "
             f"que visitou a igreja '{church_name}'. "
             f"A mensagem deve ser calorosa, convidativa para retornar, e mencionar que ficamos felizes com a visita. "
-            f"Maximo 3 frases. Comece com 'Ola {first_name}'. NAO use emojis."
+            f"Se colocando a disposição da pessoa se precisar de alguma coisa. "
+            f"Maximo 3 frases. Comece com 'Ola {first_name}'. Use Emojis moderadamente."
         )
         return GroqAIService._call_groq(api_key, system_msg, prompt, 200)
     
@@ -230,8 +232,8 @@ class GroqAIService:
         """Gera um post de divulgacao de evento para compartilhar no WhatsApp."""
         system_msg = (
             "Voce e um assistente de comunicacao de uma igreja evangelica. Crie posts de divulgacao de eventos "
-            "formatados para WhatsApp. NAO use emojis. Escreva apenas texto puro. "
-            "Use negrito do WhatsApp com *texto* e italico com _texto_."
+            "formatados para WhatsApp. USE Emojis moderadamente. "
+            "Use negrito do WhatsApp e italico"
         )
         prompt = (
             f"Crie um post de divulgacao para WhatsApp do evento da igreja '{church_name}':\n"
@@ -241,7 +243,7 @@ class GroqAIService:
             f"- Horario: {time_str}\n"
             f"- Local: {location or church_name}\n\n"
             f"O post deve ser chamativo, convidativo e bem formatado para WhatsApp. "
-            f"NAO use emojis. Use apenas texto e formatacao do WhatsApp (*negrito* e _italico_). "
+            f"USE Emojis moderadamente. Utilize formatacao do WhatsApp (negrito e italico). "
             f"Inclua uma chamada final convidando as pessoas. Maximo 8 linhas."
         )
         return GroqAIService._call_groq(api_key, system_msg, prompt, 300)

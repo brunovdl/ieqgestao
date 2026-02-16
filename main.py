@@ -178,8 +178,8 @@ def main(page: ft.Page):
 
         destinations = []
         for r in active_routes:
-            if isinstance(r[1], ft.Container): destinations.append(ft.NavigationRailDestination(icon_content=r[1], label=r[2]))
-            else: destinations.append(ft.NavigationRailDestination(icon=r[1], label=r[2]))
+            # Em Flet 0.25+, 'icon' aceita Control ou string, substituindo 'icon_content'
+            destinations.append(ft.NavigationRailDestination(icon=r[1], label=r[2]))
         
         # Botão de Sair ou Login no menu lateral
         if is_logged_in:
@@ -244,7 +244,7 @@ def main(page: ft.Page):
                 ft.Container(drawer_header, padding=10), 
                 ft.Divider(thickness=1, color="grey"), 
                 ft.Container(height=10)
-            ] + [ft.NavigationDrawerDestination(icon_content=d.icon_content, icon=d.icon, label=d.label) for d in destinations], 
+            ] + [ft.NavigationDrawerDestination(icon=d.icon, label=d.label) for d in destinations], 
             
             on_change=lambda e: nav(e.control.selected_index),
             on_dismiss=lambda e: toggle_video(True)

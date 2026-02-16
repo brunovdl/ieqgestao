@@ -229,6 +229,31 @@ class Database:
             return [self.get_photo_url(p['storage_path']) for p in res.data]
         except: return []
 
+    # --- DEVOCIONAL DO DIA ---
+    def get_today_devotional(self):
+        """Busca o devocional vigente. Antes das 8h (BR) mostra o do dia anterior.
+        Se não encontrar o devocional esperado, faz fallback para o mais recente."""
+        try:
+            now_br = datetime.now(BR_TZ)
+            
+            # Antes das 8h, o devocional vigente é o do dia anterior
+            if now_br.hour < 8:
+                target_date = (now_br - timedelta(days=1)).strftime("%Y-%m-%d")
+            else:
+                target_date = now_br.strftime("%Y-%m-%d")
+            
+            res = self.supabase.table('devotionals').select('*').eq('data', target_date).execute()
+            if res.data:
+                return res.data[0]
+            
+            # Fallback: busca o devocional mais recente disponível
+            res = self.supabase.table('devotionals').select('*').order('data', desc=True).limit(1).execute()
+            if res.data:
+                return res.data[0]
+            return None
+        except:
+            return None
+
     # --- GALERIA NATIVA ---
     def create_album(self, name, description, event_date, created_by):
         try:

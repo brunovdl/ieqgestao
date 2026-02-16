@@ -74,7 +74,7 @@ def home_view(page, db, readonly=False, webview_ref=None):
         
         video_content = ft.Container(
             content=ft.WebView(
-                ref=webview_ref, # MUDANÇA 2: Ligamos a referência aqui
+                ref=webview_ref,
                 url=embed_url,
                 expand=True,
             ),
@@ -82,7 +82,7 @@ def home_view(page, db, readonly=False, webview_ref=None):
             height=250, 
             border_radius=8,
             clip_behavior=ft.ClipBehavior.HARD_EDGE, 
-            bgcolor="black" # Fundo preto para quando o vídeo estiver invisível
+            bgcolor="black"
         )
     else:
         video_content = ft.Container(
@@ -113,8 +113,8 @@ def home_view(page, db, readonly=False, webview_ref=None):
         elevation=5
     )
 
-    # --- AGENDA (Mantido) ---
-    agenda_col = ft.Column([], spacing=10)
+    # --- AGENDA (Para o lado direito do YouTube) ---
+    agenda_col = ft.Column([], spacing=8, scroll=ft.ScrollMode.AUTO)
     WEEKDAYS = {0: "Segunda-feira", 1: "Terça-feira", 2: "Quarta-feira", 3: "Quinta-feira", 4: "Sexta-feira", 5: "Sábado", 6: "Domingo"}
 
     # --- DIALOG DE POST DE EVENTO COM IA ---
@@ -197,8 +197,8 @@ def home_view(page, db, readonly=False, webview_ref=None):
             if not final_msg or final_msg.startswith("Gerando") or final_msg.startswith("Erro"):
                 show_warning(page, "Post inválido!")
                 return
-            encoded = urllib.parse.quote(final_msg)
-            url = f"https://wa.me/?text={encoded}"
+            encoded = urllib.parse.quote_plus(final_msg)
+            url = f"https://api.whatsapp.com/send?text={encoded}"
             page.close(dlg)
             page.launch_url(url)
         
@@ -211,7 +211,7 @@ def home_view(page, db, readonly=False, webview_ref=None):
     def refresh_agenda():
         events = db.get_upcoming_events()
         agenda_col.controls.clear()
-        if not events: agenda_col.controls.append(ft.Text("Sem eventos próximos.", italic=True))
+        if not events: agenda_col.controls.append(ft.Text("Sem eventos próximos.", italic=True, size=13, color="grey"))
         today_str = datetime.now().strftime("%Y-%m-%d")
 
         for ev in events:
@@ -222,19 +222,36 @@ def home_view(page, db, readonly=False, webview_ref=None):
             
             actions = ft.Container()
             if not readonly:
-                actions = ft.Column([
-                    ft.IconButton(ft.Icons.AUTO_AWESOME, icon_color="amber", icon_size=20, tooltip="Gerar post com IA", on_click=lambda e, x=ev: show_event_post_dialog(x)),
-                    ft.IconButton(ft.Icons.EDIT, icon_color=Config.THEME_COLOR, tooltip="Editar", on_click=lambda e, x=ev: edit_ev_dialog(x)),
-                    ft.IconButton(ft.Icons.DELETE, icon_color="red", tooltip="Excluir", on_click=lambda e, x=ev['id']: (db.delete_event(x), refresh_agenda(), show_success(page, "Removido!")))
-                ], spacing=0)
+                actions = ft.Row([
+                    ft.IconButton(ft.Icons.AUTO_AWESOME, icon_color="amber", icon_size=16, tooltip="Gerar post com IA", on_click=lambda e, x=ev: show_event_post_dialog(x)),
+                    ft.IconButton(ft.Icons.EDIT, icon_color=Config.THEME_COLOR, icon_size=16, tooltip="Editar", on_click=lambda e, x=ev: edit_ev_dialog(x)),
+                    ft.IconButton(ft.Icons.DELETE, icon_color="red", icon_size=16, tooltip="Excluir", on_click=lambda e, x=ev['id']: (db.delete_event(x), refresh_agenda(), show_success(page, "Removido!")))
+                ], spacing=0, tight=True)
             
-            card = ft.Card(content=ft.Container(content=ft.Row([
-                ft.Container(content=ft.Column([ft.Text(str(d_obj.day), size=24, weight="bold", color="white"), ft.Text(d_obj.strftime("%b").upper(), size=12, color="white")], alignment="center", spacing=0), bgcolor="green" if is_today else Config.THEME_COLOR, width=60, height=60, border_radius=8, alignment=ft.alignment.center),
-                ft.Column([ft.Row([ft.Text(ev['title'], weight="bold", size=16), ft.Icon(ft.Icons.REPEAT, size=16, color="blue", tooltip="Evento Semanal") if ev.get('is_recurring') else ft.Container()], spacing=5), ft.Text(line1_text, size=14, color="black", weight="bold" if is_today else "normal"), ft.Text(f"Local: {ev['location']}", size=12, color="grey"), ft.Text(ev['description'], size=12, italic=True, color="grey")], expand=True, spacing=2),
-                actions
-            ]), padding=10))
+            card = ft.Container(
+                content=ft.Row([
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Text(str(d_obj.day), size=18, weight="bold", color="white"),
+                            ft.Text(d_obj.strftime("%b").upper(), size=10, color="white")
+                        ], alignment="center", spacing=0, horizontal_alignment="center"),
+                        bgcolor="green" if is_today else Config.THEME_COLOR,
+                        width=45, height=45, border_radius=8,
+                        alignment=ft.alignment.center
+                    ),
+                    ft.Column([
+                        ft.Text(ev['title'], weight="bold", size=13, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
+                        ft.Text(line1_text, size=11, color="grey"),
+                    ], expand=True, spacing=2),
+                    actions
+                ], vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=8),
+                padding=ft.padding.symmetric(vertical=4, horizontal=8),
+                border=ft.border.all(1, ft.colors.OUTLINE_VARIANT),
+                border_radius=8,
+            )
             agenda_col.controls.append(card)
-        page.update()
+        try: page.update()
+        except: pass
 
     def edit_ev_dialog(ev_data):
         t = ft.TextField(label="Título *", value=ev_data['title'])
@@ -287,11 +304,112 @@ def home_view(page, db, readonly=False, webview_ref=None):
         page.open(dlg)
 
     refresh_agenda()
+
+
+
+    # ==========================
+    # DEVOCIONAL DO DIA
+    # ==========================
+    devotional_data = db.get_today_devotional()
+
+    MESES = {1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 5: "Maio", 6: "Junho",
+             7: "Julho", 8: "Agosto", 9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"}
+
+    if devotional_data and devotional_data.get('data'):
+        d_obj = datetime.strptime(str(devotional_data['data']), "%Y-%m-%d")
+        date_label = f"📅 {d_obj.day} de {MESES[d_obj.month]} de {d_obj.year}"
+    else:
+        today_now = datetime.now()
+        date_label = f"📅 {today_now.day} de {MESES[today_now.month]} de {today_now.year}"
+
+    if devotional_data:
+        sections = []
+        for field in ['versiculo', 'texto', 'pratica', 'e_voce']:
+            val = devotional_data.get(field, '')
+            if val:
+                sections.append(
+                    ft.Container(
+                        content=ft.Text(val, size=14, color=ft.colors.with_opacity(0.9, "white")),
+                        padding=ft.padding.only(bottom=10),
+                    )
+                )
+
+        devotional_content = ft.Container(
+            content=ft.Column([
+                ft.Container(
+                    content=ft.Column([
+                        ft.Row([
+                            ft.Icon(ft.Icons.AUTO_STORIES, color=ft.colors.with_opacity(0.8, "white"), size=24),
+                            ft.Text("Devocional do Dia", size=18, weight="bold", color=ft.colors.with_opacity(0.85, "white")),
+                        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                        ft.Text(date_label, size=12, color=ft.colors.with_opacity(0.5, "white")),
+                        ft.Container(height=6),
+                        ft.Text(devotional_data.get('titulo', ''), size=17, weight="bold", color="white", italic=True),
+                    ], spacing=3),
+                    padding=ft.padding.only(bottom=14),
+                    border=ft.border.only(bottom=ft.BorderSide(1, ft.colors.with_opacity(0.15, "white"))),
+                ),
+                ft.Container(height=8),
+                *sections,
+                ft.Container(
+                    content=ft.Row([
+                        get_logo(30),
+                        ft.Column([
+                            ft.Text("IEQ JD Portugal", size=12, weight="bold", color=ft.colors.with_opacity(0.6, "white")),
+                            ft.Text("Av Raphaella Amoroso Micelli, 270", size=10, color=ft.colors.with_opacity(0.4, "white")),
+                        ], spacing=1),
+                    ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                    padding=ft.padding.only(top=12),
+                    border=ft.border.only(top=ft.BorderSide(1, ft.colors.with_opacity(0.1, "white"))),
+                ),
+            ], spacing=2, scroll=ft.ScrollMode.AUTO),
+            padding=20,
+            border_radius=14,
+            gradient=ft.LinearGradient(begin=ft.alignment.top_left, end=ft.alignment.bottom_right, colors=["#1e293b", "#334155"]),
+            shadow=ft.BoxShadow(spread_radius=0, blur_radius=10, color=ft.colors.with_opacity(0.2, "black"), offset=ft.Offset(0, 3)),
+        )
+    else:
+        devotional_content = ft.Container(
+            content=ft.Column([
+                ft.Row([
+                    ft.Icon(ft.Icons.AUTO_STORIES, color=ft.colors.with_opacity(0.4, "white"), size=28),
+                    ft.Column([
+                        ft.Text("Devocional do Dia", size=18, weight="bold", color=ft.colors.with_opacity(0.6, "white")),
+                        ft.Text(date_label, size=11, color=ft.colors.with_opacity(0.35, "white")),
+                    ], spacing=2),
+                ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                ft.Container(height=8),
+                ft.Text("O devocional de hoje ainda não foi publicado.\nVolte mais tarde! 🙏", size=13, color=ft.colors.with_opacity(0.4, "white"), text_align=ft.TextAlign.CENTER, italic=True),
+            ], spacing=4, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+            padding=22, border_radius=14,
+            gradient=ft.LinearGradient(begin=ft.alignment.top_left, end=ft.alignment.bottom_right, colors=["#1e293b", "#334155"]),
+            alignment=ft.alignment.center,
+        )
+
+    # --- ROW: YouTube (esquerda) + Devocional (direita) ---
+    is_mobile = (page.width or 800) < 800
+
+    if is_mobile:
+        yt_devocional_section = ft.Column([
+            devotional_content,
+            yt_card,
+        ], spacing=10)
+    else:
+        yt_devocional_section = ft.Row([
+            ft.Container(content=devotional_content, expand=1),
+            ft.Container(content=yt_card, expand=1),
+        ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.START)
+
+    # --- LAYOUT FINAL ---
     return ft.ListView([
         ft.Container(content=carousel_row, height=160), 
         ft.Divider(), 
-        yt_card, 
-        ft.Divider(), 
-        ft.Row([ft.Text("Próximos Eventos", weight="bold", size=16), ft.IconButton(ft.Icons.ADD_CIRCLE, icon_color=Config.THEME_COLOR, on_click=add_ev_dialog) if not readonly else ft.Container()], alignment="spaceBetween"), 
-        agenda_col
+        yt_devocional_section,
+        ft.Divider(),
+        ft.Row([
+            ft.Text("Próximos Eventos", weight="bold", size=16),
+            ft.IconButton(ft.Icons.ADD_CIRCLE, icon_color=Config.THEME_COLOR, on_click=add_ev_dialog) if not readonly else ft.Container()
+        ], alignment="spaceBetween"),
+        agenda_col,
+        ft.Container(height=20),
     ], padding=10, spacing=20, expand=True)
