@@ -229,21 +229,21 @@ class GroqAIService:
     
     @staticmethod
     def generate_event_post(api_key, title, description, date_str, time_str, location, church_name="IEQ Jd Portugal"):
-        """Gera um post de divulgacao de evento para compartilhar no WhatsApp."""
+        """Gera um post de divulgacao de evento para compartilhar nas redes sociais."""
         system_msg = (
             "Voce e um assistente de comunicacao de uma igreja evangelica. Crie posts de divulgacao de eventos "
-            "formatados para WhatsApp. USE Emojis moderadamente. "
-            "Use negrito do WhatsApp e italico"
+            "USE Emojis moderadamente. "
+            "Use negrito e italico"
         )
         prompt = (
-            f"Crie um post de divulgacao para WhatsApp do evento da igreja '{church_name}':\n"
+            f"Crie um post de divulgacao para redes sociais do evento da igreja '{church_name}':\n"
             f"- Titulo: {title}\n"
             f"- Descricao: {description or 'Nao informada'}\n"
             f"- Data: {date_str}\n"
             f"- Horario: {time_str}\n"
             f"- Local: {location or church_name}\n\n"
-            f"O post deve ser chamativo, convidativo e bem formatado para WhatsApp. "
-            f"USE Emojis moderadamente. Utilize formatacao do WhatsApp (negrito e italico). "
+            f"O post deve ser chamativo, convidativo e bem formatado para redes sociais. "
+            f"USE Emojis coloridos (padrao Unicode) moderadamente. Evite simbolos de texto em preto e branco. Utilize formatacao do redes sociais (negrito e italico). "
             f"Inclua uma chamada final convidando as pessoas. Maximo 8 linhas."
         )
-        return GroqAIService._call_groq(api_key, system_msg, prompt, 300)
+        return GroqAIService._call_groq(api_key, system_msg, prompt, 800)

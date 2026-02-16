@@ -334,24 +334,91 @@ def home_view(page, db, readonly=False, webview_ref=None):
                     )
                 )
 
-        devotional_content = ft.Container(
-            content=ft.Column([
-                ft.Container(
-                    content=ft.Column([
-                        ft.Row([
-                            ft.Icon(ft.Icons.AUTO_STORIES, color=ft.colors.with_opacity(0.8, "white"), size=24),
-                            ft.Text("Devocional do Dia", size=18, weight="bold", color=ft.colors.with_opacity(0.85, "white")),
-                        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                        ft.Text(date_label, size=12, color=ft.colors.with_opacity(0.5, "white")),
-                        ft.Container(height=6),
-                        ft.Text(devotional_data.get('titulo', ''), size=17, weight="bold", color="white", italic=True),
-                    ], spacing=3),
-                    padding=ft.padding.only(bottom=14),
-                    border=ft.border.only(bottom=ft.BorderSide(1, ft.colors.with_opacity(0.15, "white"))),
-                ),
-                ft.Container(height=8),
-                *sections,
-                ft.Container(
+        # Estado local do card
+        dev_expanded = [False]
+        dev_likes = [devotional_data.get('likes', 0) or 0] # Suporta null no DB
+        
+        dev_content_col = ft.Column(spacing=2, scroll=ft.ScrollMode.AUTO)
+
+        def toggle_dev(e):
+            dev_expanded[0] = not dev_expanded[0]
+            render_dev()
+            
+        def like_dev(e):
+            dev_likes[0] += 1
+            e.control.text = str(dev_likes[0])
+            e.control.icon = ft.Icons.FAVORITE
+            e.control.update()
+            # Atualiza no banco em background
+            threading.Thread(target=lambda: db.increment_devotional_likes(devotional_data['id']), daemon=True).start()
+
+        def render_dev():
+            dev_content_col.controls.clear()
+            
+            # HEADER (Sempre visível)
+            header = ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.AUTO_STORIES, color=ft.colors.with_opacity(0.8, "white"), size=24),
+                        ft.Text("Devocional do Dia", size=18, weight="bold", color=ft.colors.with_opacity(0.85, "white")),
+                    ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                    ft.Text(date_label, size=12, color=ft.colors.with_opacity(0.5, "white")),
+                    ft.Container(height=6),
+                    ft.Text(
+                        devotional_data.get('titulo', ''),
+                        size=17,
+                        weight="bold",
+                        color="white",
+                        italic=True,
+                    ),
+                ], spacing=3),
+                padding=ft.padding.only(bottom=14),
+                border=ft.border.only(bottom=ft.BorderSide(1, ft.colors.with_opacity(0.15, "white"))),
+            )
+            dev_content_col.controls.append(header)
+            
+            if not dev_expanded[0]:
+                # VISÃO RECOLHIDA
+                btn_read = ft.ElevatedButton(
+                    "Ler Devocional",
+                    icon=ft.Icons.MENU_BOOK,
+                    style=ft.ButtonStyle(
+                        color="white",
+                        bgcolor={"": ft.colors.with_opacity(0.1, "white"), "hovered": ft.colors.with_opacity(0.2, "white")},
+                        shape=ft.RoundedRectangleBorder(radius=8),
+                    ),
+                    on_click=toggle_dev
+                )
+                dev_content_col.controls.append(ft.Container(btn_read, alignment=ft.alignment.center, padding=ft.padding.symmetric(vertical=15)))
+            
+            else:
+                # VISÃO EXPANDIDA
+                dev_content_col.controls.append(ft.Container(height=8))
+                dev_content_col.controls.extend(sections)
+                
+                # Ações (Curtir + Recolher)
+                actions = ft.Row([
+                    ft.TextButton(
+                        text=str(dev_likes[0]),
+                        icon=ft.Icons.FAVORITE_BORDER if dev_likes[0] == (devotional_data.get('likes', 0) or 0) else ft.Icons.FAVORITE,
+                        icon_color="red",
+                        style=ft.ButtonStyle(color="white"),
+                        on_click=like_dev,
+                        tooltip="Curtir devocional"
+                    ),
+                    ft.TextButton(
+                        "Recolher",
+                        icon=ft.Icons.EXPAND_LESS,
+                        icon_color=ft.colors.with_opacity(0.5, "white"),
+                        style=ft.ButtonStyle(color=ft.colors.with_opacity(0.5, "white")),
+                        on_click=toggle_dev
+                    )
+                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+                
+                dev_content_col.controls.append(ft.Container(actions, padding=ft.padding.symmetric(vertical=10)))
+
+                # Rodapé Fixo
+                footer = ft.Container(
                     content=ft.Row([
                         get_logo(30),
                         ft.Column([
@@ -361,12 +428,22 @@ def home_view(page, db, readonly=False, webview_ref=None):
                     ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                     padding=ft.padding.only(top=12),
                     border=ft.border.only(top=ft.BorderSide(1, ft.colors.with_opacity(0.1, "white"))),
-                ),
-            ], spacing=2, scroll=ft.ScrollMode.AUTO),
+                )
+                dev_content_col.controls.append(footer)
+            
+            try: dev_content_col.update()
+            except: pass
+
+        # Renderização Inicial
+        render_dev()
+
+        devotional_content = ft.Container(
+            content=dev_content_col,
             padding=20,
             border_radius=14,
             gradient=ft.LinearGradient(begin=ft.alignment.top_left, end=ft.alignment.bottom_right, colors=["#1e293b", "#334155"]),
             shadow=ft.BoxShadow(spread_radius=0, blur_radius=10, color=ft.colors.with_opacity(0.2, "black"), offset=ft.Offset(0, 3)),
+            animate_size=ft.animation.Animation(300, ft.AnimationCurve.EASE_OUT)
         )
     else:
         devotional_content = ft.Container(

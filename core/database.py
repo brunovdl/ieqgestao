@@ -247,11 +247,27 @@ class Database:
                 return res.data[0]
             
             # Fallback: busca o devocional mais recente disponível
-            res = self.supabase.table('devotionals').select('*').order('data', desc=True).limit(1).execute()
             if res.data:
                 return res.data[0]
             return None
         except:
+            return None
+
+    def increment_devotional_likes(self, dev_id):
+        """Incrementa o contador de likes de um devocional."""
+        try:
+            # Primeiro busca o valor atual para garantir consistência (ou usa rpc se tiver)
+            # Aqui vamos fazer um update simples incrementando
+            # Nota: Em produção idealmente usaria uma RPC 'increment_likes' para atomicidade
+            res = self.supabase.table('devotionals').select('likes').eq('id', dev_id).execute()
+            if res.data:
+                current = res.data[0].get('likes', 0) or 0
+                new_val = current + 1
+                self.supabase.table('devotionals').update({'likes': new_val}).eq('id', dev_id).execute()
+                return new_val
+            return None
+        except Exception as e:
+            print(f"Erro ao curtir devocional: {e}")
             return None
 
     # --- GALERIA NATIVA ---
