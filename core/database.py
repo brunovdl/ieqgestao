@@ -434,3 +434,116 @@ class Database:
             self.supabase.table('rides').delete().eq('id', ride_id).execute()
             return True
         except: return False
+
+    # ==========================
+    # ANALYTICS DE ACESSOS
+    # ==========================
+
+    def track_page_view(self, page_name, page_label="", user_name="Visitante", session_id=""):
+        """Registra uma visualização de página."""
+        try:
+            data = {
+                'page_name': page_name,
+                'page_label': page_label,
+                'user_name': user_name or "Visitante",
+                'session_id': session_id or "",
+            }
+            self.supabase.table('page_views').insert(data).execute()
+            return True
+        except Exception as e:
+            print(f"Erro track_page_view: {e}")
+            return False
+
+    def get_analytics_summary(self):
+        """Retorna resumo de acessos: hoje, 7 dias, 30 dias e total."""
+        try:
+            now = datetime.now(BR_TZ)
+            today_str = now.strftime("%Y-%m-%dT00:00:00")
+            week_str = (now - timedelta(days=7)).strftime("%Y-%m-%dT00:00:00")
+            month_str = (now - timedelta(days=30)).strftime("%Y-%m-%dT00:00:00")
+
+            today = self.supabase.table('page_views').select('*', count='exact', head=True).gte('viewed_at', today_str).execute()
+            week = self.supabase.table('page_views').select('*', count='exact', head=True).gte('viewed_at', week_str).execute()
+            month = self.supabase.table('page_views').select('*', count='exact', head=True).gte('viewed_at', month_str).execute()
+            total = self.supabase.table('page_views').select('*', count='exact', head=True).execute()
+
+            return {
+                'today': today.count or 0,
+                'week': week.count or 0,
+                'month': month.count or 0,
+                'total': total.count or 0,
+            }
+        except Exception as e:
+            print(f"Erro get_analytics_summary: {e}")
+            return {'today': 0, 'week': 0, 'month': 0, 'total': 0}
+
+    def get_page_ranking(self, days=30):
+        """Retorna as páginas mais acessadas no período."""
+        try:
+            now = datetime.now(BR_TZ)
+            since = (now - timedelta(days=days)).strftime("%Y-%m-%dT00:00:00")
+            res = self.supabase.table('page_views').select('page_name, page_label').gte('viewed_at', since).execute()
+            
+            if not res.data:
+                return []
+            
+            # Conta manualmente
+            counts = {}
+            labels = {}
+            for row in res.data:
+                name = row['page_name']
+                counts[name] = counts.get(name, 0) + 1
+                if row.get('page_label'):
+                    labels[name] = row['page_label']
+            
+            ranking = [{'page_name': k, 'page_label': labels.get(k, k), 'views': v} for k, v in counts.items()]
+            ranking.sort(key=lambda x: x['views'], reverse=True)
+            return ranking
+        except Exception as e:
+            print(f"Erro get_page_ranking: {e}")
+            return []
+
+    def get_daily_views(self, days=30):
+        """Retorna visualizações por dia nos últimos N dias."""
+        try:
+            now = datetime.now(BR_TZ)
+            since = (now - timedelta(days=days)).strftime("%Y-%m-%dT00:00:00")
+            res = self.supabase.table('page_views').select('viewed_at').gte('viewed_at', since).order('viewed_at', desc=True).execute()
+            
+            if not res.data:
+                return []
+            
+            # Agrupa por dia
+            daily = {}
+            for row in res.data:
+                day = row['viewed_at'][:10]  # YYYY-MM-DD
+                daily[day] = daily.get(day, 0) + 1
+            
+            result = [{'date': k, 'views': v} for k, v in daily.items()]
+            result.sort(key=lambda x: x['date'], reverse=True)
+            return result
+        except Exception as e:
+            print(f"Erro get_daily_views: {e}")
+            return []
+
+    def get_user_activity(self, days=30):
+        """Retorna atividade por usuário nos últimos N dias."""
+        try:
+            now = datetime.now(BR_TZ)
+            since = (now - timedelta(days=days)).strftime("%Y-%m-%dT00:00:00")
+            res = self.supabase.table('page_views').select('user_name').gte('viewed_at', since).execute()
+            
+            if not res.data:
+                return []
+            
+            counts = {}
+            for row in res.data:
+                name = row.get('user_name', 'Visitante') or 'Visitante'
+                counts[name] = counts.get(name, 0) + 1
+            
+            result = [{'user': k, 'views': v} for k, v in counts.items()]
+            result.sort(key=lambda x: x['views'], reverse=True)
+            return result
+        except Exception as e:
+            print(f"Erro get_user_activity: {e}")
+            return []

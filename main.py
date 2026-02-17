@@ -1,6 +1,7 @@
 import flet as ft
 import threading
 import time
+import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from core.config import Config
@@ -15,6 +16,7 @@ from views.cells_view import cells_view
 from views.gallery_view import gallery_view
 from views.users_view import users_view
 from views.carpool_view import carpool_view
+from views.analytics_view import analytics_view
 
 def main(page: ft.Page):
     page.title = Config.APP_TITLE
@@ -23,7 +25,8 @@ def main(page: ft.Page):
     
     db = Database()
     user_state = {"user": None, "full_name": None, "perms": {}, "readonly": False}
-    notification_flag = [False] 
+    notification_flag = [False]
+    session_id = str(uuid.uuid4())[:8]  # ID curto de sessão para analytics
 
     def logout():
         """Volta ao modo público (não à tela de login)."""
@@ -107,12 +110,16 @@ def main(page: ft.Page):
         BR_TZ = ZoneInfo("America/Sao_Paulo")
         now = datetime.now(BR_TZ)
         hour = now.hour
-        raw_name = user_state.get('full_name', 'Visitante') or "Visitante"
-        first_name = raw_name.split()[0].capitalize()
 
-        if 6 <= hour < 12: greeting_msg = f"Bom dia, {first_name}"; icon, color = ft.Icons.WB_SUNNY, "orange"
-        elif 12 <= hour < 18: greeting_msg = f"Boa tarde, {first_name}"; icon, color = ft.Icons.WB_SUNNY_OUTLINED, "orange"
-        else: greeting_msg = f"Boa noite, {first_name}"; icon, color = ft.Icons.NIGHTLIGHT_ROUND, "blue"
+        if 6 <= hour < 12: greeting_base = "Bom dia"; icon, color = ft.Icons.WB_SUNNY, "orange"
+        elif 12 <= hour < 18: greeting_base = "Boa tarde"; icon, color = ft.Icons.WB_SUNNY_OUTLINED, "orange"
+        else: greeting_base = "Boa noite"; icon, color = ft.Icons.NIGHTLIGHT_ROUND, "blue"
+
+        if is_logged_in and user_state.get('full_name'):
+            first_name = user_state['full_name'].split()[0].capitalize()
+            greeting_msg = f"{greeting_base}, {first_name}"
+        else:
+            greeting_msg = greeting_base
 
         drawer_header = ft.Container(
             content=ft.Column([
@@ -129,20 +136,25 @@ def main(page: ft.Page):
         mobile_badge_text_ref = ft.Ref[ft.Text]()
         mobile_badge_container_ref = ft.Ref[ft.Container]()
 
-        carpool_icon_menu = ft.Container(content=ft.Stack([ft.Icon(ft.Icons.DIRECTIONS_CAR), ft.Container(ref=badge_container_ref, content=ft.Text(ref=badge_text_ref, value="0", size=10, color="white", weight="bold"), bgcolor="red", border_radius=10, width=16, height=16, alignment=ft.alignment.center, top=0, right=0, visible=False)]), width=24, height=24)
+        # --- HELPER PARA ÍCONES CUSTOMIZADOS ---
+        def custom_icon(src, size=32):
+            return ft.Image(src=src, width=size, height=size, fit=ft.ImageFit.CONTAIN)
+
+        carpool_icon_menu = ft.Container(content=ft.Stack([custom_icon("carona_solidaria_icon.png", 32), ft.Container(ref=badge_container_ref, content=ft.Text(ref=badge_text_ref, value="0", size=10, color="white", weight="bold"), bgcolor="red", border_radius=10, width=16, height=16, alignment=ft.alignment.center, top=0, right=0, visible=False)]), width=32, height=32)
 
         # --- ROTAS PÚBLICAS (sem login) ---
         public_routes = [
-            ("home", ft.Icons.HOME, "Início", home_view),
-            ("celulas", ft.Icons.GROUPS, "Casas de Cornélio", cells_view),
-            ("galeria", ft.Icons.PHOTO_LIBRARY, "Galeria", gallery_view),
+            ("home", custom_icon("home_icon.png"), "Início", home_view),
+            ("celulas", custom_icon("casas_de_cornelio_icon.png"), "Casas de Cornélio", cells_view),
+            ("galeria", custom_icon("galeria_icon.png"), "Galeria", gallery_view),
         ]
 
         # --- ROTAS PROTEGIDAS (com login) ---
         all_protected_routes = [
-            ("lista_visitantes", ft.Icons.PEOPLE, "Visitantes", visitors_list_view),
+            ("lista_visitantes", custom_icon("visitantes_icon.png"), "Visitantes", visitors_list_view),
             ("carona", carpool_icon_menu, "Carona Solidária", carpool_view), 
-            ("usuarios", ft.Icons.SECURITY, "Gestão de Usuários", users_view)
+            ("usuarios", custom_icon("gestao_usuários_icon.png"), "Gestão de Usuários", users_view),
+            ("analytics", custom_icon("analitics_icon.png"), "Analytics", analytics_view),
         ]
         
         active_routes = list(public_routes)
@@ -151,12 +163,15 @@ def main(page: ft.Page):
         if is_logged_in:
             perms = user_state["perms"]
             # Adiciona carona (todos logados têm acesso)
-            active_routes.append(("carona", carpool_icon_menu, "Carona Solidária", carpool_view))
+            carpool_icon_nav = ft.Container(content=ft.Stack([custom_icon("carona_solidaria_icon.png", 32), ft.Container(ref=badge_container_ref, content=ft.Text(ref=badge_text_ref, value="0", size=10, color="white", weight="bold"), bgcolor="red", border_radius=10, width=16, height=16, alignment=ft.alignment.center, top=0, right=0, visible=False)]), width=32, height=32)
+            active_routes.append(("carona", carpool_icon_nav, "Carona Solidária", carpool_view))
             carpool_route_index = len(active_routes) - 1
             
             for key, icon_or_badge, label, func in all_protected_routes:
                 if key == "carona": continue  # Já adicionado
-                if perms.get(key) or (key == "lista_visitantes" and perms.get("visitantes")):
+                if key == "analytics" and perms.get('is_admin'):
+                    active_routes.append((key, icon_or_badge, label, func))
+                elif perms.get(key) or (key == "lista_visitantes" and perms.get("visitantes")):
                     active_routes.append((key, icon_or_badge, label, func))
 
         def update_badge_loop():
@@ -183,9 +198,9 @@ def main(page: ft.Page):
         
         # Botão de Sair ou Login no menu lateral
         if is_logged_in:
-            destinations.append(ft.NavigationRailDestination(icon=ft.Icons.LOGOUT, label="Sair"))
+            destinations.append(ft.NavigationRailDestination(icon=custom_icon("logout_icon.png"), label="Sair"))
         else:
-            destinations.append(ft.NavigationRailDestination(icon=ft.Icons.LOGIN, label="Entrar"))
+            destinations.append(ft.NavigationRailDestination(icon=custom_icon("login_icon.png"), label="Entrar"))
 
         # --- HISTÓRICO DE NAVEGAÇÃO ---
         nav_history = []
@@ -206,16 +221,30 @@ def main(page: ft.Page):
             
             current_nav_index[0] = idx
             rail.selected_index = idx; drawer.selected_index = idx
-            key, _, label, func = active_routes[idx]
-            header_title.value = label
+            key, icon_ctrl, label, func = active_routes[idx]
+            header_title_text.value = label
+            # Atualiza ícone do header
+            if isinstance(icon_ctrl, ft.Image):
+                header_icon.src = icon_ctrl.src
+            elif isinstance(icon_ctrl, ft.Container) and isinstance(icon_ctrl.content, ft.Stack):
+                # Carona com badge - pega o src do primeiro controle
+                first = icon_ctrl.content.controls[0]
+                if isinstance(first, ft.Image):
+                    header_icon.src = first.src
             
             # --- INJEÇÃO DE DEPENDÊNCIAS ---
             if func == home_view:
-                content.content = func(page, db, True if not is_logged_in else user_state["readonly"], webview_ref=video_ref)
-            elif func in [visitors_list_view, gallery_view, users_view, carpool_view]:
+                content.content = func(page, db, True if not is_logged_in else user_state["readonly"], webview_ref=video_ref, is_logged_in=is_logged_in)
+            elif func in [visitors_list_view, gallery_view, users_view, carpool_view, analytics_view]:
                 content.content = func(page, db, user_state, True if not is_logged_in else user_state["readonly"])
             else:
                 content.content = func(page, db, True if not is_logged_in else user_state["readonly"])
+            
+            # --- TRACKING DE ACESSOS ---
+            try:
+                user_name = user_state.get('full_name') or user_state.get('user') or 'Visitante'
+                threading.Thread(target=lambda k=key, l=label, u=user_name: db.track_page_view(k, l, u, session_id), daemon=True).start()
+            except: pass
             
             page.close(drawer)
             toggle_video(True)
@@ -251,23 +280,36 @@ def main(page: ft.Page):
         )
         page.drawer = drawer
 
-        header_title = ft.Text(active_routes[0][2], size=20, weight="bold", color="white")
+        # Ícone + título da página no header
+        first_icon = active_routes[0][1]
+        first_src = first_icon.src if isinstance(first_icon, ft.Image) else "home_icon.png"
+        header_icon = ft.Image(src=first_src, width=26, height=26, fit=ft.ImageFit.CONTAIN)
+        header_title_text = ft.Text(active_routes[0][2], size=20, weight="bold", color="black")
+        header_title = ft.Row([header_icon, header_title_text], spacing=8, vertical_alignment="center")
         mobile_actions = []
+
+        # Botão do Instagram
+        mobile_actions.append(ft.Container(
+            content=ft.Image(src="instagram_icon.png", width=26, height=26, fit=ft.ImageFit.CONTAIN),
+            on_click=lambda e: page.launch_url("https://www.instagram.com/ieqjdportugal/"),
+            tooltip="Instagram",
+            ink=True, border_radius=20, padding=8,
+        ))
         
         # Badge da carona (apenas quando logado)
         if is_logged_in and carpool_route_index != -1:
-            mobile_actions.append(ft.Container(content=ft.Stack([ft.IconButton(ft.Icons.DIRECTIONS_CAR, icon_color="white", on_click=lambda e: nav(carpool_route_index)), ft.Container(ref=mobile_badge_container_ref, content=ft.Text(ref=mobile_badge_text_ref, value="0", size=10, color="white", weight="bold"), bgcolor="red", border_radius=10, width=16, height=16, alignment=ft.alignment.center, top=5, right=5, visible=False)]), padding=0))
+            mobile_actions.append(ft.Container(content=ft.Stack([ft.Container(content=custom_icon("carona_solidaria_icon.png", 26), on_click=lambda e: nav(carpool_route_index), padding=8), ft.Container(ref=mobile_badge_container_ref, content=ft.Text(ref=mobile_badge_text_ref, value="0", size=10, color="white", weight="bold"), bgcolor="red", border_radius=10, width=16, height=16, alignment=ft.alignment.center, top=5, right=5, visible=False)]), padding=0))
         
         # Botão de Login/Logout no header (mobile)
         if is_logged_in:
-            mobile_actions.append(ft.IconButton(ft.Icons.LOGOUT, icon_color="white", tooltip="Sair", on_click=lambda e: logout()))
+            mobile_actions.append(ft.Container(content=custom_icon("logout_icon.png", 26), on_click=lambda e: logout(), tooltip="Sair", ink=True, border_radius=20, padding=8))
         else:
-            mobile_actions.append(ft.IconButton(ft.Icons.LOGIN, icon_color="white", tooltip="Entrar", on_click=lambda e: show_login_dialog()))
+            mobile_actions.append(ft.Container(content=custom_icon("login_icon.png", 26), on_click=lambda e: show_login_dialog(), tooltip="Entrar", ink=True, border_radius=20, padding=8))
 
         # --- BOTÃO MENU COM PROTEÇÃO ---
         btn_menu = ft.IconButton(
             ft.Icons.MENU, 
-            icon_color="white", 
+            icon_color="black", 
             on_click=lambda e: (toggle_video(False), page.open(drawer))
         )
 
@@ -276,7 +318,7 @@ def main(page: ft.Page):
                 ft.Row([btn_menu, header_title], vertical_alignment="center"), 
                 ft.Row(mobile_actions, vertical_alignment="center")
             ], alignment="spaceBetween"), 
-            bgcolor=Config.THEME_COLOR, 
+            bgcolor="#E0E0E0", 
             padding=ft.padding.symmetric(horizontal=10, vertical=5), 
             shadow=ft.BoxShadow(blur_radius=5)
         )

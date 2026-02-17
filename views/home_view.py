@@ -7,7 +7,7 @@ from core.config import Config
 from utils.helpers import get_latest_video_id, show_success, show_error, show_warning, get_logo, GroqAIService
 
 # MUDANÇA 1: Adicionamos o argumento opcional 'webview_ref'
-def home_view(page, db, readonly=False, webview_ref=None):
+def home_view(page, db, readonly=False, webview_ref=None, is_logged_in=False):
     
     # --- CARROSSEL DE FOTOS (Mantido) ---
     carousel_photos = db.get_recent_photos(15)
@@ -98,7 +98,7 @@ def home_view(page, db, readonly=False, webview_ref=None):
         content=ft.Container(
             content=ft.Column([
                 ft.Row([
-                    ft.Icon(ft.Icons.SMART_DISPLAY, color="red", size=28), 
+                    ft.Image(src="youtube_icon.png", width=28, height=28, fit=ft.ImageFit.CONTAIN), 
                     ft.Text("Youtube", size=20, weight="bold", color="red")
                 ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
                 
@@ -397,15 +397,26 @@ def home_view(page, db, readonly=False, webview_ref=None):
                 dev_content_col.controls.extend(sections)
                 
                 # Ações (Curtir + Recolher)
-                actions = ft.Row([
-                    ft.TextButton(
+                if is_logged_in:
+                    like_btn = ft.TextButton(
                         text=str(dev_likes[0]),
                         icon=ft.Icons.FAVORITE_BORDER if dev_likes[0] == (devotional_data.get('likes', 0) or 0) else ft.Icons.FAVORITE,
                         icon_color="red",
                         style=ft.ButtonStyle(color="white"),
                         on_click=like_dev,
                         tooltip="Curtir devocional"
-                    ),
+                    )
+                else:
+                    like_btn = ft.Container(
+                        content=ft.Row([
+                            ft.Icon(ft.Icons.FAVORITE_BORDER, color=ft.colors.with_opacity(0.3, "white"), size=18),
+                            ft.Text(str(dev_likes[0]), size=13, color=ft.colors.with_opacity(0.4, "white")),
+                        ], spacing=4, tight=True),
+                        tooltip="Faça login para curtir",
+                    )
+
+                actions = ft.Row([
+                    like_btn,
                     ft.TextButton(
                         "Recolher",
                         icon=ft.Icons.EXPAND_LESS,
