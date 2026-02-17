@@ -283,9 +283,10 @@ def main(page: ft.Page):
         # Ícone + título da página no header
         first_icon = active_routes[0][1]
         first_src = first_icon.src if isinstance(first_icon, ft.Image) else "home_icon.png"
-        header_icon = ft.Image(src=first_src, width=26, height=26, fit=ft.ImageFit.CONTAIN)
-        header_title_text = ft.Text(active_routes[0][2], size=20, weight="bold", color="black")
-        header_title = ft.Row([header_icon, header_title_text], spacing=8, vertical_alignment="center")
+        first_src = first_icon.src if isinstance(first_icon, ft.Image) else "home_icon.png"
+        header_icon = ft.Image(src=first_src, width=24, height=24, fit=ft.ImageFit.CONTAIN)
+        header_title_text = ft.Text(active_routes[0][2], size=16, weight="bold", color="black", overflow=ft.TextOverflow.ELLIPSIS, max_lines=1, expand=True)
+        header_title = ft.Row([header_icon, header_title_text], spacing=8, vertical_alignment="center", expand=True)
         mobile_actions = []
 
         # Botão do Instagram
