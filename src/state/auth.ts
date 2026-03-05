@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 
 interface User {
     id: string;
@@ -27,12 +28,26 @@ interface AuthState {
     logout: () => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
-    user: null,
-    permissions: null,
-    isAuthenticated: false,
-    isLoginModalOpen: false,
-    setLoginModalOpen: (isOpen) => set({ isLoginModalOpen: isOpen }),
-    login: (user, permissions) => set({ user, permissions, isAuthenticated: true, isLoginModalOpen: false }),
-    logout: () => set({ user: null, permissions: null, isAuthenticated: false }),
-}));
+export const useAuthStore = create<AuthState>()(
+    persist(
+        (set) => ({
+            user: null,
+            permissions: null,
+            isAuthenticated: false,
+            isLoginModalOpen: false,
+            setLoginModalOpen: (isOpen) => set({ isLoginModalOpen: isOpen }),
+            login: (user, permissions) => set({ user, permissions, isAuthenticated: true, isLoginModalOpen: false }),
+            logout: () => set({ user: null, permissions: null, isAuthenticated: false }),
+        }),
+        {
+            name: 'ieq-auth-session', // chave no localStorage
+            storage: createJSONStorage(() => localStorage),
+            // Apenas persists dados essenciais (não o estado do modal de login)
+            partialize: (state) => ({
+                user: state.user,
+                permissions: state.permissions,
+                isAuthenticated: state.isAuthenticated,
+            }),
+        }
+    )
+);

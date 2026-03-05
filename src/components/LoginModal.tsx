@@ -38,15 +38,14 @@ export default function LoginModal({ onClose }: LoginModalProps) {
                 const isAdmin = user.is_admin || false;
 
                 const finalPerms = {
-                    ...perms,
                     is_admin: isAdmin,
-                    readonly: !isAdmin,
-                    home: true,
-                    galeria: true,
-                    celulas: true,
-                    carona: true,
-                    visitantes: isAdmin ? true : perms.visitantes || false,
-                    usuarios: isAdmin ? true : false,
+                    readonly: isAdmin ? false : (perms.readonly || false),
+                    home: isAdmin ? true : (perms.home || false),
+                    galeria: isAdmin ? true : (perms.galeria || false),
+                    celulas: isAdmin ? true : (perms.celulas || false),
+                    carona: isAdmin ? true : (perms.carona || false),
+                    visitantes: isAdmin ? true : (perms.visitantes || false),
+                    usuarios: isAdmin ? true : (perms.usuarios || false),
                 };
 
                 login({ id: user.id, username: user.username, full_name: user.full_name || user.username }, finalPerms);
