@@ -253,7 +253,7 @@ export default function Visitors() {
                                         <div className={`status-badge ${visitor.contacted_at ? 'active' : 'inactive'}`}>
                                             {visitor.contacted_at ? 'Contatado' : 'Pendente'}
                                         </div>
-                                        {!permissions?.readonly && (
+                                        {!permissions?.readonly && (isAdmin || permissions?.visitantes) && (
                                             <button
                                                 className="icon-btn"
                                                 onClick={() => handleOpenModal(visitor)}
@@ -262,7 +262,7 @@ export default function Visitors() {
                                                 <Edit2 size={16} />
                                             </button>
                                         )}
-                                        {isAdmin && (
+                                        {!permissions?.readonly && (isAdmin || permissions?.visitantes) && (
                                             <button
                                                 className="icon-btn"
                                                 onClick={() => handleDeleteVisitor(visitor.id)}

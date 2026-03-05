@@ -268,3 +268,33 @@
     font-size: 0.85rem;
     color: var(--text-secondary);
 }
+
+@media (max-width: 768px) {
+    .agenda-card {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+
+    .agenda-header {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .agenda-meta {
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+
+    .slider-img {
+        border-radius: var(--radius-lg);
+    }
+
+    .welcome-banner {
+        padding: 1.5rem;
+    }
+
+    .greeting-text {
+        font-size: 1.8rem;
+    }
+}

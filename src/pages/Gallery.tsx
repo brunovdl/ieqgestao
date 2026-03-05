@@ -244,9 +244,9 @@ export default function Gallery() {
                             <h2 style={{ margin: 0, textAlign: 'left' }}>Galeria</h2>
                             <p className="subtitle" style={{ margin: 0, textAlign: 'left' }}>Lembranças e eventos da IEQ Jd Portugal</p>
                         </div>
-                        {isAdmin && (
-                            <button className="btn btn-primary" onClick={handleOpenModal}>
-                                <Plus size={18} /> Novo Álbum
+                        {(isAdmin || permissions?.galeria) && !permissions?.readonly && (
+                            <button className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={() => handleOpenModal()}>
+                                <Plus size={16} /> Novo Álbum
                             </button>
                         )}
                     </div>
@@ -328,16 +328,8 @@ export default function Gallery() {
                             </div>
                         </div>
 
-                        {isAdmin && (
+                        {(isAdmin || permissions?.galeria) && !permissions?.readonly && (
                             <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                <input
-                                    type="file"
-                                    multiple
-                                    accept="image/*"
-                                    style={{ display: 'none' }}
-                                    ref={fileInputRef}
-                                    onChange={handleFileChange}
-                                />
                                 <button
                                     className="btn btn-outline"
                                     onClick={() => handleDeleteAlbum(selectedAlbum.id)}
@@ -345,12 +337,9 @@ export default function Gallery() {
                                 >
                                     <Trash2 size={18} /> Excluir Álbum
                                 </button>
-                                <button
-                                    className="btn btn-primary"
-                                    onClick={() => fileInputRef.current?.click()}
-                                    disabled={isUploading}
-                                >
-                                    {isUploading ? 'Enviando...' : <><Upload size={18} /> Adicionar Fotos</>}
+                                <button className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '0.5rem 1rem' }} onClick={() => fileInputRef.current?.click()} disabled={isUploading}>
+                                    <Upload size={18} /> {isUploading ? 'Enviando...' : 'Adicionar Fotos'}
+                                    <input type="file" id="photo-upload" accept="image/*" multiple style={{ display: 'none' }} onChange={handleFileChange} ref={fileInputRef} />
                                 </button>
                             </div>
                         )}
@@ -368,7 +357,7 @@ export default function Gallery() {
                                             alt="Moment"
                                             loading="lazy"
                                         />
-                                        {isAdmin && (
+                                        {(isAdmin || permissions?.galeria) && !permissions?.readonly && (
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); handleDeletePhoto(photo); }}
                                                 style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(220, 38, 38, 0.9)', color: 'white', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 20 }}

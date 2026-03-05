@@ -281,3 +281,21 @@
 .btn-secondary:hover {
     background-color: var(--bg-body);
 }
+
+@media (max-width: 768px) {
+    .page-header-top {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .cell-card-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+
+    .cell-admin-actions {
+        flex-direction: column;
+    }
+}

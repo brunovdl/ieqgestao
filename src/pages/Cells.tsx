@@ -119,7 +119,7 @@ export default function Cells() {
     };
 
     const filteredCells = cells.filter(cell => {
-        if (!isAdmin && !cell.active) return false;
+        if (!(isAdmin || permissions?.celulas) && !cell.active) return false;
         return (
             cell.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             cell.leader_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -132,7 +132,7 @@ export default function Cells() {
             <div className="page-header">
                 <div className="page-header-top">
                     <h2>Casas de Cornélio</h2>
-                    {isAdmin && (
+                    {(isAdmin || permissions?.celulas) && !permissions?.readonly && (
                         <button className="btn btn-primary" onClick={() => handleOpenModal()}>
                             <Plus size={18} /> Nova Célula
                         </button>
@@ -191,7 +191,7 @@ export default function Cells() {
                                     )}
                                 </div>
 
-                                {isAdmin && (
+                                {(isAdmin || permissions?.celulas) && !permissions?.readonly && (
                                     <div className="cell-admin-actions">
                                         <button className="admin-action-btn" onClick={() => handleOpenModal(cell)} title="Editar">
                                             <Edit2 size={16} /> Editar
