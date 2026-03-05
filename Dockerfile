@@ -1,16 +1,13 @@
-# Use Node.js as the base image for building the app
+# Stage 1: Build the React app
 FROM node:20-alpine AS builder
 
-# Set the working directory
 WORKDIR /app
 
-# Copy package.json and package-lock.json
+# Copy package files and install dependencies
 COPY package*.json ./
-
-# Install dependencies
 RUN npm ci
 
-# Copy the rest of the application code
+# Copy application source code
 COPY . .
 
 # Receive build arguments from EasyPanel
@@ -18,34 +15,30 @@ ARG SUPABASE_URL
 ARG SUPABASE_KEY
 ARG GROQ_API_KEY
 
-# Mapeia as credenciais para o Vite (.env estático)
-ENV VITE_SUPABASE_URL=$SUPABASE_URL
-ENV VITE_SUPABASE_ANON_KEY=$SUPABASE_KEY
-ENV VITE_GROQ_API_KEY=$GROQ_API_KEY
+# Write a .env.production file so Vite can find the variables at build time
+RUN echo "VITE_SUPABASE_URL=${SUPABASE_URL}" > .env.production && \
+    echo "VITE_SUPABASE_ANON_KEY=${SUPABASE_KEY}" >> .env.production && \
+    echo "VITE_GROQ_API_KEY=${GROQ_API_KEY}" >> .env.production
 
 # Build the Vite React application
 RUN npm run build
 
-# Use a lightweight NGINX server to host the static files
+# Stage 2: Serve with NGINX
 FROM nginx:alpine
 
-# Copy the built files from the previous stage to Nginx's HTML folder
+# Copy built files
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Add custom Nginx configuration to handle React Router (Single Page Application routing)
-# This prevents 404 errors when refreshing on a route like /celulas
-RUN echo "server { \
-    listen 80; \
-    server_name _; \
-    root /usr/share/nginx/html; \
-    index index.html index.htm; \
-    location / { \
-    try_files \$uri \$uri/ /index.html; \
-    } \
-    }" > /etc/nginx/conf.d/default.conf
+# Configure NGINX for React Router (SPA)
+RUN printf 'server {\n\
+    listen 80;\n\
+    server_name _;\n\
+    root /usr/share/nginx/html;\n\
+    index index.html;\n\
+    location / {\n\
+    try_files $uri $uri/ /index.html;\n\
+    }\n\
+    }\n' > /etc/nginx/conf.d/default.conf
 
-# Expose port 80
 EXPOSE 80
-
-# Start Nginx
 CMD ["nginx", "-g", "daemon off;"]
