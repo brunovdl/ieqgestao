@@ -16,7 +16,7 @@ interface AgendaEvent {
 }
 
 export default function Home() {
-    const { user, permissions } = useAuthStore();
+    const { permissions } = useAuthStore();
     const isAdmin = permissions?.is_admin || false;
 
     const [events, setEvents] = useState<AgendaEvent[]>([]);
