@@ -1,0 +1,116 @@
+.users-page {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.users-table-container {
+    background-color: var(--bg-surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    overflow-x: auto;
+    width: 100%;
+}
+
+.users-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+}
+
+.users-table th,
+.users-table td {
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.users-table th {
+    background-color: var(--bg-body);
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.users-table tbody tr {
+    transition: background-color 0.2s;
+}
+
+.users-table tbody tr:hover {
+    background-color: var(--bg-body);
+}
+
+.table-user-cell {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.user-avatar-small {
+    background-color: var(--secondary-color);
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.user-title-small {
+    display: flex;
+    flex-direction: column;
+}
+
+.user-title-small strong {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.user-title-small span {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.role-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.role-badge.admin {
+    background-color: #ffebee;
+    color: #c62828;
+}
+
+.role-badge.standard {
+    background-color: #e3f2fd;
+    color: var(--primary-color);
+}
+
+.perm-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: var(--radius-sm);
+    transition: background-color 0.2s;
+}
+
+.perm-toggle:hover {
+    background-color: var(--bg-body);
+}
+
+.perm-toggle input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary-color);
+    cursor: pointer;
+}

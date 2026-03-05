@@ -1,0 +1,79 @@
+.visitors-page {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.visitors-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.visitor-card {
+    padding: 1.5rem;
+    border-radius: var(--radius-lg);
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    background-color: var(--bg-surface);
+    box-shadow: var(--shadow-sm);
+    border-left: 4px solid var(--border-color);
+}
+
+.visitor-card.pending {
+    border-left-color: #f57c00;
+    /* Laranja pendente */
+}
+
+.visitor-card.contacted {
+    border-left-color: #2e7d32;
+    /* Verde concluído */
+    opacity: 0.85;
+}
+
+.visitor-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.visitor-header h3 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 1.25rem;
+}
+
+.visitor-body {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.75rem;
+}
+
+.visitor-obs {
+    background-color: var(--bg-body);
+    padding: 0.75rem;
+    border-radius: var(--radius-md);
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    border-left: 3px solid var(--border-color);
+}
+
+.visitor-contact-info {
+    font-size: 0.85rem;
+    color: #2e7d32;
+    font-style: italic;
+    justify-self: flex-end;
+}
+
+.visitor-actions {
+    margin-top: 0.5rem;
+    padding-top: 1rem;
+    border-top: 1px dashed var(--border-color);
+}

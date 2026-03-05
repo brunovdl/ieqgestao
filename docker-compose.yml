@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  ieq-jd-portugal:
+    build: .
+    ports:
+      - "8080:80"
+    restart: always
+
+    # Environment variables are required for Supabase and the Groq AI API at build & runtime.
+    # In EasyPanel, you can specify these directly in the Environment panel UI 
+    # instead of hardcoding them here.
+    environment:
+      - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+      - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+      - VITE_GROQ_API_KEY=${VITE_GROQ_API_KEY}
