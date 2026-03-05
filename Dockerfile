@@ -13,6 +13,16 @@ RUN npm ci
 # Copy the rest of the application code
 COPY . .
 
+# Receive build arguments from EasyPanel
+ARG SUPABASE_URL
+ARG SUPABASE_KEY
+ARG GROQ_API_KEY
+
+# Mapeia as credenciais para o Vite (.env estático)
+ENV VITE_SUPABASE_URL=$SUPABASE_URL
+ENV VITE_SUPABASE_ANON_KEY=$SUPABASE_KEY
+ENV VITE_GROQ_API_KEY=$GROQ_API_KEY
+
 # Build the Vite React application
 RUN npm run build
 
@@ -30,9 +40,9 @@ RUN echo "server { \
     root /usr/share/nginx/html; \
     index index.html index.htm; \
     location / { \
-        try_files \$uri \$uri/ /index.html; \
+    try_files \$uri \$uri/ /index.html; \
     } \
-}" > /etc/nginx/conf.d/default.conf
+    }" > /etc/nginx/conf.d/default.conf
 
 # Expose port 80
 EXPOSE 80
