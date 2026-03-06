@@ -10,14 +10,13 @@ interface User {
 interface Permissions {
     is_admin: boolean;
     readonly: boolean;
-    home: boolean;
     galeria: boolean;
     celulas: boolean;
     carona: boolean;
-    visitantes?: boolean;
-    usuarios?: boolean;
-    analytics?: boolean;
-    eventos?: boolean;
+    visitantes: boolean;
+    usuarios: boolean;
+    analytics: boolean;
+    eventos: boolean;
 }
 
 interface AuthState {

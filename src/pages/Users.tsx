@@ -145,7 +145,7 @@ export default function Users() {
                 // Ensure record is updated/inserted in public.users via trigger or manual if needed.
                 // Our current python logic used to depend on standard supabase flow.
                 // We'll update the public user profile manually with the name and admin powers just in case
-                const defaultPerms = { celulas: true, galeria: false, readonly: true, usuarios: false, visitantes: false, eventos: false, carona: true };
+                const defaultPerms = { celulas: true, galeria: false, readonly: true, usuarios: false, visitantes: false, eventos: false, carona: true, analytics: false };
                 const { error: profileError } = await supabase.from('users').upsert({
                     id: authData.user.id,
                     username: newUserForm.email.split('@')[0],

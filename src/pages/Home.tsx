@@ -79,7 +79,7 @@ export default function Home() {
                 .from('photos')
                 .select('storage_path')
                 .order('created_at', { ascending: false })
-                .limit(8);
+                .limit(15);
 
             if (error) throw error;
 
@@ -205,7 +205,16 @@ export default function Home() {
                     ) : photos.length > 0 ? (
                         <div className="slider-wrapper">
                             <button className="slider-btn left" onClick={prevPhoto}><ChevronLeft size={24} /></button>
-                            <img src={photos[currentPhotoIndex]} alt={`Carousel ${currentPhotoIndex}`} className="slider-img animate-fade-in" />
+                            <div className="slider-photos-row">
+                                {[0, 1, 2].map((offset) => {
+                                    const photoIndex = (currentPhotoIndex + offset) % photos.length;
+                                    return (
+                                        <div key={`${photoIndex}-${offset}`} className="slider-img-container">
+                                            <img src={photos[photoIndex]} alt={`Carousel ${photoIndex}`} className="slider-img animate-fade-in" />
+                                        </div>
+                                    );
+                                })}
+                            </div>
                             <button className="slider-btn right" onClick={nextPhoto}><ChevronRight size={24} /></button>
 
                             <div className="slider-dots">
