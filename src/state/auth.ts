@@ -16,6 +16,7 @@ interface Permissions {
     carona: boolean;
     visitantes?: boolean;
     usuarios?: boolean;
+    analytics?: boolean;
 }
 
 interface AuthState {
