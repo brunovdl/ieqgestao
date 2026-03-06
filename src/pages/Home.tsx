@@ -239,7 +239,7 @@ export default function Home() {
                 <div className="agenda-section glass-effect">
                     <div className="agenda-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <h2>Agenda</h2>
-                        {(isAdmin || permissions?.home) && !permissions?.readonly && (
+                        {(isAdmin || permissions?.eventos) && !permissions?.readonly && (
                             <button className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={() => handleOpenEventModal()}>
                                 <Plus size={16} /> Novo
                             </button>
@@ -263,7 +263,7 @@ export default function Home() {
                                             {ev.location && <span className="meta-item"><MapPin size={14} /> {ev.location}</span>}
                                         </div>
                                     </div>
-                                    {(isAdmin || permissions?.home) && !permissions?.readonly && (
+                                    {(isAdmin || permissions?.eventos) && !permissions?.readonly && (
                                         <div style={{ display: 'flex', gap: '0.2rem', marginLeft: '0.5rem', alignSelf: 'flex-start' }}>
                                             <button
                                                 onClick={() => handleGenerateAIPost(ev)}
@@ -297,7 +297,7 @@ export default function Home() {
             </div>
 
             {/* Admin Add Agenda Event Modal */}
-            {(isAdmin || permissions?.home) && !permissions?.readonly && isEventModalOpen && (
+            {(isAdmin || permissions?.eventos) && !permissions?.readonly && isEventModalOpen && (
                 <div className="admin-modal-backdrop fadeIn" onClick={() => setIsEventModalOpen(false)}>
                     <div className="admin-modal-content scaleIn" onClick={(e) => e.stopPropagation()}>
                         <div className="admin-modal-header">
@@ -340,7 +340,7 @@ export default function Home() {
             )}
 
             {/* AI Post Modal */}
-            {(isAdmin || permissions?.home) && !permissions?.readonly && isAiModalOpen && (
+            {(isAdmin || permissions?.eventos) && !permissions?.readonly && isAiModalOpen && (
                 <div className="admin-modal-backdrop fadeIn" onClick={() => setIsAiModalOpen(false)}>
                     <div className="admin-modal-content scaleIn" onClick={(e) => e.stopPropagation()}>
                         <div className="admin-modal-header">

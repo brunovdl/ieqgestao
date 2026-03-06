@@ -20,12 +20,11 @@ interface Ride {
 
 export default function Carpool() {
     const { permissions, user } = useAuthStore();
+    const isAdmin = permissions?.is_admin || false;
     const [rides, setRides] = useState<Ride[]>([]);
     const [loading, setLoading] = useState(true);
 
-    if (!permissions?.carona) {
-        return <div className="page-container"><h2>Acesso Negado</h2><p>Você não tem permissão para ver esta página.</p></div>;
-    }
+    // Carona is now public for viewing, but restricted for adding/editing via buttons
 
     useEffect(() => {
         fetchRides();
@@ -106,7 +105,7 @@ export default function Carpool() {
                     <h2>Carona Solidária</h2>
                     <p className="subtitle">Ofereça ou encontre uma carona para os eventos</p>
                 </div>
-                {!permissions.readonly && (
+                {(isAdmin || permissions?.carona) && !permissions?.readonly && (
                     <button className="btn btn-primary">
                         <Plus size={20} /> Oferecer Carona
                     </button>

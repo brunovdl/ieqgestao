@@ -17,6 +17,7 @@ interface Permissions {
     visitantes?: boolean;
     usuarios?: boolean;
     analytics?: boolean;
+    eventos?: boolean;
 }
 
 interface AuthState {

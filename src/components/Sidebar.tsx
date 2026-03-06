@@ -7,12 +7,12 @@ import './Sidebar.css';
 const publicRoutes = [
     { path: '/', name: 'Início', icon: Home },
     { path: '/celulas', name: 'Casas de Cornélio', icon: Users },
-    { path: '/galeria', name: 'Galeria', icon: Camera },
+    { path: '/carona', name: 'Carona Solidária', icon: CarFront },
 ];
 
 const protectedRoutes = [
+    { path: '/galeria', name: 'Galeria', icon: Camera, permKey: 'galeria' },
     { path: '/visitantes', name: 'Visitantes', icon: UserPlus, permKey: 'visitantes' },
-    { path: '/carona', name: 'Carona Solidária', icon: CarFront, permKey: 'carona' },
     { path: '/usuarios', name: 'Gestão de Usuários', icon: Users, permKey: 'usuarios' },
     { path: '/analytics', name: 'Analytics', icon: BarChart3, permKey: 'is_admin' },
 ];
@@ -23,13 +23,7 @@ export default function Sidebar() {
     const activeRoutes = [...publicRoutes];
 
     if (isAuthenticated && permissions) {
-        if (permissions.carona) {
-            activeRoutes.push(protectedRoutes.find(r => r.path === '/carona')!);
-        }
-
         protectedRoutes.forEach(route => {
-            if (route.path === '/carona') return;
-
             const hasPerm = route.permKey === 'is_admin'
                 ? permissions.is_admin
                 : (permissions as any)[route.permKey];

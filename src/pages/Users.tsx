@@ -36,7 +36,9 @@ export default function Users() {
         readonly: false,
         celulas: true,
         galeria: true,
-        eventos: false
+        carona: true,
+        eventos: false,
+        analytics: false
     });
 
     // Create State
@@ -80,7 +82,9 @@ export default function Users() {
             readonly: usr.permissions?.readonly || false,
             celulas: usr.permissions?.celulas ?? true,
             galeria: usr.permissions?.galeria ?? true,
+            carona: usr.permissions?.carona ?? true,
             eventos: usr.permissions?.eventos || false,
+            analytics: usr.permissions?.analytics || false,
         });
         setIsEditModalOpen(true);
     };
@@ -96,7 +100,9 @@ export default function Users() {
                 readonly: editPerms.readonly,
                 celulas: editPerms.celulas,
                 galeria: editPerms.galeria,
+                carona: editPerms.carona,
                 eventos: editPerms.eventos,
+                analytics: editPerms.analytics,
             };
 
             const { error } = await supabase.from('users').update({
@@ -139,7 +145,7 @@ export default function Users() {
                 // Ensure record is updated/inserted in public.users via trigger or manual if needed.
                 // Our current python logic used to depend on standard supabase flow.
                 // We'll update the public user profile manually with the name and admin powers just in case
-                const defaultPerms = { celulas: true, galeria: true, readonly: false, usuarios: false, visitantes: false, eventos: false };
+                const defaultPerms = { celulas: true, galeria: false, readonly: true, usuarios: false, visitantes: false, eventos: false, carona: true };
                 const { error: profileError } = await supabase.from('users').upsert({
                     id: authData.user.id,
                     username: newUserForm.email.split('@')[0],
@@ -305,6 +311,14 @@ export default function Users() {
                                         <label className="perm-toggle">
                                             <input type="checkbox" checked={editPerms.eventos} onChange={(e) => setEditPerms(prev => ({ ...prev, eventos: e.target.checked }))} />
                                             <span>Mural Eventos</span>
+                                        </label>
+                                        <label className="perm-toggle">
+                                            <input type="checkbox" checked={editPerms.carona} onChange={(e) => setEditPerms(prev => ({ ...prev, carona: e.target.checked }))} />
+                                            <span>Gerir Carona</span>
+                                        </label>
+                                        <label className="perm-toggle">
+                                            <input type="checkbox" checked={editPerms.analytics} onChange={(e) => setEditPerms(prev => ({ ...prev, analytics: e.target.checked }))} />
+                                            <span>Ver Analytics</span>
                                         </label>
                                         <label className="perm-toggle" style={{ borderLeft: '3px solid #fbd38d', paddingLeft: '0.5rem' }}>
                                             <input type="checkbox" checked={editPerms.readonly} onChange={(e) => setEditPerms(prev => ({ ...prev, readonly: e.target.checked }))} />
