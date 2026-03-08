@@ -44,6 +44,7 @@ export default function Users() {
     // Create State
     const [newUserForm, setNewUserForm] = useState({
         full_name: '',
+        username: '',
         email: '',
         password: '',
         is_admin: false
@@ -125,42 +126,31 @@ export default function Users() {
         e.preventDefault();
         setIsSaving(true);
         try {
-            // First create the user in Auth
-            const { data: authData, error: authError } = await supabase.auth.signUp({
-                email: newUserForm.email,
+            const finalUsername = newUserForm.username.trim().toLowerCase() || (newUserForm.email ? newUserForm.email.split('@')[0] : 'user');
+
+            // Verificar se usuário já existe
+            const { data: existingUser } = await supabase.from('users').select('id').eq('username', finalUsername).single();
+            if (existingUser) {
+                alert("Este nome de usuário já está em uso. Tente outro.");
+                return;
+            }
+
+            const defaultPerms = { celulas: true, galeria: false, readonly: true, usuarios: false, visitantes: false, eventos: false, carona: true, analytics: false };
+
+            const { error: insertError } = await supabase.from('users').insert([{
+                username: finalUsername,
+                full_name: newUserForm.full_name,
+                email: newUserForm.email || null,
                 password: newUserForm.password,
-            });
+                is_admin: newUserForm.is_admin,
+                permissions: newUserForm.is_admin ? {} : defaultPerms
+            }]);
 
-            if (authError) {
-                // Se o usuário já existir no auth, vamos tentar apenas inserir no public.users (bypass para ambiente dev)
-                if (authError.message.includes('already registered')) {
-                    alert("Este email já está registrado. Tente usar outro ou recupere a senha.");
-                    return;
-                } else {
-                    throw authError;
-                }
-            }
-
-            if (authData.user) {
-                // Ensure record is updated/inserted in public.users via trigger or manual if needed.
-                // Our current python logic used to depend on standard supabase flow.
-                // We'll update the public user profile manually with the name and admin powers just in case
-                const defaultPerms = { celulas: true, galeria: false, readonly: true, usuarios: false, visitantes: false, eventos: false, carona: true, analytics: false };
-                const { error: profileError } = await supabase.from('users').upsert({
-                    id: authData.user.id,
-                    username: newUserForm.email.split('@')[0],
-                    full_name: newUserForm.full_name,
-                    email: newUserForm.email,
-                    is_admin: newUserForm.is_admin,
-                    permissions: newUserForm.is_admin ? {} : defaultPerms
-                });
-
-                if (profileError) throw profileError;
-            }
+            if (insertError) throw insertError;
 
             await fetchUsers();
             setIsCreateModalOpen(false);
-            setNewUserForm({ full_name: '', email: '', password: '', is_admin: false });
+            setNewUserForm({ full_name: '', username: '', email: '', password: '', is_admin: false });
             alert("Usuário criado com sucesso!");
         } catch (err: any) {
             console.error('Erro ao criar usuário:', err);
@@ -359,10 +349,19 @@ export default function Users() {
                                 />
                             </div>
                             <div className="form-group">
-                                <label>E-mail (Credencial de Login)</label>
+                                <label>Nome de Usuário (Login)</label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={newUserForm.username}
+                                    onChange={(e) => setNewUserForm(prev => ({ ...prev, username: e.target.value.replace(/\s+/g, '').toLowerCase() }))}
+                                    placeholder="Ex: joao.silva"
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>E-mail (Opcional)</label>
                                 <input
                                     type="email"
-                                    required
                                     value={newUserForm.email}
                                     onChange={(e) => setNewUserForm(prev => ({ ...prev, email: e.target.value }))}
                                     placeholder="joao@email.com"
