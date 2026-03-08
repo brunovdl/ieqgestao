@@ -186,6 +186,9 @@ body {
   border-radius: var(--radius-sm);
   font-family: inherit;
   font-size: 1rem;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .form-group input:focus,
@@ -220,4 +223,11 @@ body {
 
 .btn-secondary:hover {
   background-color: var(--bg-body);
+}
+
+@media (max-width: 768px) {
+  .admin-modal-content {
+    padding: 1.25rem;
+    max-width: 95vw;
+  }
 }

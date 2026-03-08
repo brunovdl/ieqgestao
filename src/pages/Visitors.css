@@ -102,4 +102,22 @@
     .visitor-actions>div {
         grid-template-columns: 1fr !important;
     }
+
+    .form-row.grid-1-1,
+    .form-row.grid-1-2 {
+        grid-template-columns: 1fr;
+    }
+}
+
+.form-row {
+    display: grid;
+    gap: 1rem;
+}
+
+.form-row.grid-1-1 {
+    grid-template-columns: 1fr 1fr;
+}
+
+.form-row.grid-1-2 {
+    grid-template-columns: 1fr 2fr;
 }

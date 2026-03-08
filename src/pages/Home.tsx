@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../state/auth';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { MapPin, Clock, ChevronLeft, ChevronRight, Plus, X, Trash2, Edit, Bot, Copy } from 'lucide-react';
+import { MapPin, Clock, ChevronLeft, ChevronRight, Plus, X, Trash2, Edit, Bot, Copy, Calendar } from 'lucide-react';
 import './Home.css';
 
 interface AgendaEvent {
@@ -36,6 +36,10 @@ export default function Home() {
     const [aiPostText, setAiPostText] = useState('');
     const [isAiModalOpen, setIsAiModalOpen] = useState(false);
     const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+
+    // Event Details Modal State
+    const [selectedEvent, setSelectedEvent] = useState<AgendaEvent | null>(null);
+    const [isEventDetailsModalOpen, setIsEventDetailsModalOpen] = useState(false);
 
     useEffect(() => {
         fetchAgenda();
@@ -258,47 +262,50 @@ export default function Home() {
                         <div className="loading-state">A carregar agenda...</div>
                     ) : (
                         <div className="agenda-list">
-                            {events.map(ev => (
-                                <div key={ev.id} className="agenda-card">
-                                    <div className="agenda-date-box">
-                                        <span className="agenda-day">{format(new Date(`${ev.event_date}T00:00:00`), 'dd')}</span>
-                                        <span className="agenda-month">{format(new Date(`${ev.event_date}T00:00:00`), 'MMM', { locale: ptBR })}</span>
-                                    </div>
-                                    <div className="agenda-details">
-                                        <h3>{ev.title}</h3>
-                                        {ev.description && <p className="agenda-desc">{ev.description}</p>}
-                                        <div className="agenda-meta">
-                                            <span className="meta-item"><Clock size={14} /> {ev.event_time.slice(0, 5)}</span>
-                                            {ev.location && <span className="meta-item"><MapPin size={14} /> {ev.location}</span>}
+                            {events.map(ev => {
+                                const isToday = ev.event_date === new Date().toISOString().split('T')[0];
+                                return (
+                                    <div key={ev.id} className={`agenda-card ${isToday ? 'today' : ''}`} onClick={() => { setSelectedEvent(ev); setIsEventDetailsModalOpen(true); }} style={{ cursor: 'pointer' }}>
+                                        <div className="agenda-date-box">
+                                            <span className="agenda-day">{format(new Date(`${ev.event_date}T00:00:00`), 'dd')}</span>
+                                            <span className="agenda-month">{format(new Date(`${ev.event_date}T00:00:00`), 'MMM', { locale: ptBR })}</span>
                                         </div>
-                                    </div>
-                                    {(isAdmin || permissions?.eventos) && !permissions?.readonly && (
-                                        <div style={{ display: 'flex', gap: '0.2rem', marginLeft: '0.5rem', alignSelf: 'flex-start' }}>
-                                            <button
-                                                onClick={() => handleGenerateAIPost(ev)}
-                                                style={{ background: 'none', border: 'none', color: '#1976d2', cursor: 'pointer', padding: '0.5rem' }}
-                                                title="Gerar Post via IA"
-                                            >
-                                                <Bot size={16} />
-                                            </button>
-                                            <button
-                                                onClick={() => handleOpenEventModal(ev)}
-                                                style={{ background: 'none', border: 'none', color: '#f57c00', cursor: 'pointer', padding: '0.5rem' }}
-                                                title="Editar Evento"
-                                            >
-                                                <Edit size={16} />
-                                            </button>
-                                            <button
-                                                onClick={() => handleDeleteEvent(ev.id)}
-                                                style={{ background: 'none', border: 'none', color: '#c62828', cursor: 'pointer', padding: '0.5rem' }}
-                                                title="Excluir Evento"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
+                                        <div className="agenda-details">
+                                            <h3>{ev.title}</h3>
+                                            {ev.description && <p className="agenda-desc">{ev.description}</p>}
+                                            <div className="agenda-meta">
+                                                <span className="meta-item"><Clock size={14} /> {ev.event_time.slice(0, 5)}</span>
+                                                {ev.location && <span className="meta-item"><MapPin size={14} /> {ev.location}</span>}
+                                            </div>
                                         </div>
-                                    )}
-                                </div>
-                            ))}
+                                        {(isAdmin || permissions?.eventos) && !permissions?.readonly && (
+                                            <div style={{ display: 'flex', gap: '0.2rem', marginLeft: '0.5rem', alignSelf: 'flex-start' }}>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleGenerateAIPost(ev); }}
+                                                    style={{ background: 'none', border: 'none', color: '#1976d2', cursor: 'pointer', padding: '0.5rem' }}
+                                                    title="Gerar Post via IA"
+                                                >
+                                                    <Bot size={16} />
+                                                </button>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleOpenEventModal(ev); }}
+                                                    style={{ background: 'none', border: 'none', color: '#f57c00', cursor: 'pointer', padding: '0.5rem' }}
+                                                    title="Editar Evento"
+                                                >
+                                                    <Edit size={16} />
+                                                </button>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleDeleteEvent(ev.id); }}
+                                                    style={{ background: 'none', border: 'none', color: '#c62828', cursor: 'pointer', padding: '0.5rem' }}
+                                                    title="Excluir Evento"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                )
+                            })}
                             {events.length === 0 && <div className="empty-state">Sem eventos para os próximos dias.</div>}
                         </div>
                     )}
@@ -377,6 +384,54 @@ export default function Home() {
                                 <button type="button" className="btn btn-secondary" onClick={() => setIsAiModalOpen(false)}>Fechar</button>
                                 <button type="button" className="btn btn-primary" onClick={copyToClipboard} disabled={isGeneratingAi}>
                                     <Copy size={16} /> Copiar Texto
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Event Details Viewer Modal */}
+            {isEventDetailsModalOpen && selectedEvent && (
+                <div className="admin-modal-backdrop fadeIn" onClick={() => setIsEventDetailsModalOpen(false)}>
+                    <div className="admin-modal-content scaleIn" onClick={(e) => e.stopPropagation()}>
+                        <div className="admin-modal-header" style={{ marginBottom: '1.5rem' }}>
+                            <h3 style={{ fontSize: '1.5rem', margin: 0, color: 'var(--primary-color)' }}>{selectedEvent.title}</h3>
+                            <button className="close-btn" onClick={() => setIsEventDetailsModalOpen(false)}><X size={24} /></button>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', color: 'var(--text-secondary)', fontSize: '0.95rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1.25rem' }}>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                    <Calendar size={18} /> {format(new Date(`${selectedEvent.event_date}T00:00:00`), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                                </span>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                    <Clock size={18} /> {selectedEvent.event_time.slice(0, 5)}
+                                </span>
+                            </div>
+
+                            {selectedEvent.location && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)', backgroundColor: 'var(--bg-body)', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
+                                    <MapPin size={20} style={{ color: 'var(--primary-color)' }} />
+                                    <span><strong>Localização:</strong> {selectedEvent.location}</span>
+                                </div>
+                            )}
+
+                            <div style={{ marginTop: '0.5rem' }}>
+                                <strong style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Detalhes do Evento:</strong>
+                                {selectedEvent.description ? (
+                                    <p style={{ lineHeight: '1.6', color: 'var(--text-primary)', whiteSpace: 'pre-wrap', margin: 0, fontSize: '1rem' }}>
+                                        {selectedEvent.description}
+                                    </p>
+                                ) : (
+                                    <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic', margin: 0 }}>
+                                        Nenhuma informação extra fornecida.
+                                    </p>
+                                )}
+                            </div>
+
+                            <div className="form-actions" style={{ marginTop: '1rem' }}>
+                                <button type="button" className="btn btn-primary" onClick={() => setIsEventDetailsModalOpen(false)} style={{ width: '100%' }}>
+                                    Fechar
                                 </button>
                             </div>
                         </div>

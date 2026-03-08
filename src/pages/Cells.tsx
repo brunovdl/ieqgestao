@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../state/auth';
-import { Search, MapPin, Clock, Users as UsersIcon, Plus, Edit2, Trash2, PowerOff, X } from 'lucide-react';
+import { Search, MapPin, Clock, Users as UsersIcon, Plus, Edit2, Trash2, PowerOff, X, Navigation } from 'lucide-react';
 import './Cells.css';
 
 interface Cell {
@@ -25,6 +25,8 @@ export default function Cells() {
 
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+    const [selectedCell, setSelectedCell] = useState<Cell | null>(null);
     const [editingCell, setEditingCell] = useState<Cell | null>(null);
     const [formData, setFormData] = useState<Partial<Cell>>({
         name: '', leader_name: '', host_name: '', address: '', meeting_day: '', meeting_time: '', active: true
@@ -155,7 +157,12 @@ export default function Cells() {
                 <div className="cells-grid">
                     {filteredCells.length > 0 ? (
                         filteredCells.map(cell => (
-                            <div key={cell.id} className={`cell-card glass-effect ${!cell.active ? 'inactive' : ''}`}>
+                            <div
+                                key={cell.id}
+                                className={`cell-card glass-effect ${!cell.active ? 'inactive' : ''}`}
+                                onClick={() => { setSelectedCell(cell); setIsDetailsModalOpen(true); }}
+                                style={{ cursor: 'pointer' }}
+                            >
                                 <div className="cell-card-header">
                                     <h3>{cell.name}</h3>
                                     <span className={`status-badge ${cell.active ? 'active' : 'inactive'}`}>
@@ -192,14 +199,14 @@ export default function Cells() {
                                 </div>
 
                                 {(isAdmin || permissions?.celulas) && !permissions?.readonly && (
-                                    <div className="cell-admin-actions">
-                                        <button className="admin-action-btn" onClick={() => handleOpenModal(cell)} title="Editar">
+                                    <div className="cell-admin-actions" onClick={(e) => e.stopPropagation()}>
+                                        <button className="admin-action-btn" onClick={(e) => { e.stopPropagation(); handleOpenModal(cell); }} title="Editar">
                                             <Edit2 size={16} /> Editar
                                         </button>
-                                        <button className="admin-action-btn" onClick={() => handleToggleActive(cell)} title={cell.active ? "Desativar" : "Ativar"}>
+                                        <button className="admin-action-btn" onClick={(e) => { e.stopPropagation(); handleToggleActive(cell); }} title={cell.active ? "Desativar" : "Ativar"}>
                                             <PowerOff size={16} /> {cell.active ? "Desativar" : "Ativar"}
                                         </button>
-                                        <button className="admin-action-btn delete" onClick={() => handleDelete(cell.id)} title="Excluir">
+                                        <button className="admin-action-btn delete" onClick={(e) => { e.stopPropagation(); handleDelete(cell.id); }} title="Excluir">
                                             <Trash2 size={16} /> Apagar
                                         </button>
                                     </div>
@@ -268,6 +275,65 @@ export default function Cells() {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Cell Details Viewer Modal */}
+            {isDetailsModalOpen && selectedCell && (
+                <div className="admin-modal-backdrop fadeIn" onClick={() => setIsDetailsModalOpen(false)}>
+                    <div className="admin-modal-content scaleIn" onClick={(e) => e.stopPropagation()}>
+                        <div className="admin-modal-header" style={{ marginBottom: '1.5rem', alignItems: 'flex-start' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                <h3 style={{ fontSize: '1.5rem', margin: 0, color: 'var(--primary-color)' }}>{selectedCell.name}</h3>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <span className={`status-badge ${selectedCell.active ? 'active' : 'inactive'}`} style={{ margin: 0 }}>
+                                        {selectedCell.active ? 'Status: Ativa' : 'Status: Inativa'}
+                                    </span>
+                                </div>
+                            </div>
+                            <button className="close-btn" onClick={() => setIsDetailsModalOpen(false)}><X size={24} /></button>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', color: 'var(--text-secondary)', fontSize: '0.95rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1.25rem' }}>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-primary)' }}>
+                                    <UsersIcon size={18} style={{ color: 'var(--primary-color)' }} /> <strong>Líder:</strong> {selectedCell.leader_name}
+                                </span>
+                                {selectedCell.host_name && (
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-primary)' }}>
+                                        <UsersIcon size={18} style={{ color: '#f57c00' }} /> <strong>Anfitrião:</strong> {selectedCell.host_name}
+                                    </span>
+                                )}
+                                {selectedCell.meeting_day && selectedCell.meeting_time && (
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-primary)' }}>
+                                        <Clock size={18} style={{ color: '#1976d2' }} /> <strong>Reunião:</strong> {selectedCell.meeting_day} às {selectedCell.meeting_time}
+                                    </span>
+                                )}
+                            </div>
+
+                            {selectedCell.address && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', backgroundColor: 'var(--bg-body)', padding: '1rem', borderRadius: 'var(--radius-md)' }}>
+                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', color: 'var(--text-primary)' }}>
+                                        <MapPin size={20} style={{ color: 'var(--primary-color)', flexShrink: 0, marginTop: '2px' }} />
+                                        <span style={{ lineHeight: '1.4' }}><strong>Endereço da Casa:</strong><br />{selectedCell.address}</span>
+                                    </div>
+                                    <button
+                                        className="btn btn-primary"
+                                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', width: '100%', marginTop: '0.5rem', backgroundColor: '#1976d2' }}
+                                        onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedCell.address)}`, '_blank')}
+                                    >
+                                        <Navigation size={18} /> Abrir no GPS (Maps)
+                                    </button>
+                                </div>
+                            )}
+
+                            <div className="form-actions" style={{ marginTop: '1rem' }}>
+                                <button type="button" className="btn btn-secondary" onClick={() => setIsDetailsModalOpen(false)} style={{ width: '100%' }}>
+                                    Fechar Detalhes
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}
