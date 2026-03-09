@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuthStore } from '../state/auth';
+import { getBrasiliaTimestampString } from '../utils/timezone';
 import { supabase } from '../lib/supabase';
 import { X, Lock, User } from 'lucide-react';
 import './LoginModal.css';
@@ -52,7 +53,7 @@ export default function LoginModal({ onClose }: LoginModalProps) {
                 login({ id: user.id, username: user.username, full_name: user.full_name || user.username }, finalPerms);
 
                 // Atualiza last login
-                await supabase.from('users').update({ last_login: new Date().toISOString() }).eq('id', user.id);
+                await supabase.from('users').update({ last_login: getBrasiliaTimestampString() }).eq('id', user.id);
 
                 onClose();
             } else {

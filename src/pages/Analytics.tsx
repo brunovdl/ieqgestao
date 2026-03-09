@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../state/auth';
 import { BarChart3, TrendingUp, Users, CalendarDays, Key } from 'lucide-react';
 import { subDays } from 'date-fns';
+import { getBrasiliaTimestampString } from '../utils/timezone';
 import './Analytics.css';
 
 interface StatCardProps {
@@ -42,7 +43,7 @@ export default function Analytics() {
     const fetchStats = async () => {
         try {
             const now = new Date();
-            const formatIso = (d: Date) => d.toISOString();
+            const formatIso = (d: Date) => getBrasiliaTimestampString(d);
             const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
             const { count: todayCount } = await supabase.from('page_views').select('*', { count: 'exact', head: true }).gte('viewed_at', formatIso(startOfDay));

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { getBrasiliaDateString, getBrasiliaTimestampString } from '../utils/timezone';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../state/auth';
 import { Phone, MapPin, Calendar, CheckSquare, Plus, X, Search, Edit2, MessageSquare, Bot, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
@@ -36,7 +37,7 @@ export default function Visitors() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [formData, setFormData] = useState<Partial<Visitor>>({
-        name: '', phone: '', address: '', observations: '', date_visit: new Date().toISOString().split('T')[0]
+        name: '', phone: '', address: '', observations: '', date_visit: getBrasiliaDateString()
     });
     const [editingId, setEditingId] = useState<number | null>(null);
     const [cep, setCep] = useState('');
@@ -130,7 +131,7 @@ export default function Visitors() {
                 .from('visitors')
                 .update({
                     contacted_by: user?.full_name || user?.username,
-                    contacted_at: new Date().toISOString()
+                    contacted_at: getBrasiliaTimestampString()
                 })
                 .eq('id', id);
 
@@ -138,6 +139,25 @@ export default function Visitors() {
             fetchVisitors(); // Reload list
         } catch (err) {
             console.error('Erro ao atualizar visitante:', err);
+        }
+    };
+
+    const unmarkAsContacted = async (id: number) => {
+        if (!window.confirm("Certeza que deseja desmarcar este visitante como contatado?")) return;
+        try {
+            const { error } = await supabase
+                .from('visitors')
+                .update({
+                    contacted_by: null,
+                    contacted_at: null
+                })
+                .eq('id', id);
+
+            if (error) throw error;
+            fetchVisitors(); // Reload list
+        } catch (err) {
+            console.error('Erro ao atualizar visitante:', err);
+            alert('Falha ao desmarcar visitante.');
         }
     };
 
@@ -161,7 +181,7 @@ export default function Visitors() {
             setNumero('');
             setComplemento('');
         } else {
-            setFormData({ name: '', phone: '', address: '', observations: '', date_visit: new Date().toISOString().split('T')[0] });
+            setFormData({ name: '', phone: '', address: '', observations: '', date_visit: getBrasiliaDateString() });
             setEditingId(null);
             setCep('');
             setNumero('');
@@ -380,6 +400,13 @@ export default function Visitors() {
                                                             </button>
                                                         </div>
                                                     )}
+                                                    {visitor.contacted_at && !permissions?.readonly && (isAdmin || user?.full_name === visitor.contacted_by || user?.username === visitor.contacted_by) && (
+                                                        <div className="visitor-actions-compact" style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', flexWrap: 'wrap', justifyContent: 'flex-start' }}>
+                                                            <button onClick={(e) => { e.stopPropagation(); unmarkAsContacted(visitor.id); }} className="btn btn-outline" style={{ fontSize: '0.75rem', padding: '0.4rem 0.6rem', color: '#d32f2f', borderColor: '#d32f2f', display: 'flex', alignItems: 'center', gap: '4px' }} title="Desmarcar Contato">
+                                                                <X size={14} /> Desmarcar
+                                                            </button>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ))}
                                         </div>
@@ -594,6 +621,11 @@ export default function Visitors() {
                                             <CheckSquare size={18} /> Marcar Contatado
                                         </button>
                                     </>
+                                )}
+                                {selectedVisitor.contacted_at && !permissions?.readonly && (isAdmin || user?.full_name === selectedVisitor.contacted_by || user?.username === selectedVisitor.contacted_by) && (
+                                    <button onClick={() => { setIsVisitorDetailsModalOpen(false); unmarkAsContacted(selectedVisitor.id); }} className="btn btn-outline" style={{ width: '100%', color: '#d32f2f', borderColor: '#d32f2f' }}>
+                                        <X size={18} /> Desmarcar Contato
+                                    </button>
                                 )}
                                 <button type="button" className="btn btn-primary" onClick={() => setIsVisitorDetailsModalOpen(false)} style={{ width: '100%' }}>
                                     Fechar

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { getBrasiliaTimestampString } from '../utils/timezone';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../state/auth';
 import { CarFront, Calendar, Users, Phone, Plus } from 'lucide-react';
@@ -32,7 +33,7 @@ export default function Carpool() {
 
     const fetchRides = async () => {
         try {
-            const now = new Date().toISOString();
+            const now = getBrasiliaTimestampString();
             const { data, error } = await supabase
                 .from('rides')
                 .select('*')

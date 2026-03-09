@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { getBrasiliaDateString } from '../utils/timezone';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../state/auth';
 import { format } from 'date-fns';
@@ -29,7 +30,7 @@ export default function Home() {
     const [isEventModalOpen, setIsEventModalOpen] = useState(false);
     const [isSavingEvent, setIsSavingEvent] = useState(false);
     const [eventFormData, setEventFormData] = useState<Partial<AgendaEvent>>({
-        title: '', description: '', event_date: new Date().toISOString().split('T')[0], event_time: '19:30', location: 'IEQ Jd Portugal'
+        title: '', description: '', event_date: getBrasiliaDateString(), event_time: '19:30', location: 'IEQ Jd Portugal'
     });
 
     // AI Modal State
@@ -59,7 +60,7 @@ export default function Home() {
 
     const fetchAgenda = async () => {
         try {
-            const today = new Date().toISOString().split('T')[0];
+            const today = getBrasiliaDateString();
             const { data, error } = await supabase
                 .from('agenda')
                 .select('*')
@@ -106,7 +107,7 @@ export default function Home() {
         if (event) {
             setEventFormData(event);
         } else {
-            setEventFormData({ title: '', description: '', event_date: new Date().toISOString().split('T')[0], event_time: '19:30', location: 'IEQ Jd Portugal' });
+            setEventFormData({ title: '', description: '', event_date: getBrasiliaDateString(), event_time: '19:30', location: 'IEQ Jd Portugal' });
         }
         setIsEventModalOpen(true);
     };
@@ -263,7 +264,7 @@ export default function Home() {
                     ) : (
                         <div className="agenda-list">
                             {events.map(ev => {
-                                const isToday = ev.event_date === new Date().toISOString().split('T')[0];
+                                const isToday = ev.event_date === getBrasiliaDateString();
                                 return (
                                     <div key={ev.id} className={`agenda-card ${isToday ? 'today' : ''}`} onClick={() => { setSelectedEvent(ev); setIsEventDetailsModalOpen(true); }} style={{ cursor: 'pointer' }}>
                                         <div className="agenda-date-box">

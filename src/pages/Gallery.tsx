@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { getBrasiliaDateString } from '../utils/timezone';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../state/auth';
 import { Camera, Calendar, ArrowLeft, Plus, X, Upload, Trash2 } from 'lucide-react';
@@ -33,7 +34,7 @@ export default function Gallery() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [formData, setFormData] = useState<Partial<Album>>({
-        name: '', description: '', event_date: new Date().toISOString().split('T')[0]
+        name: '', description: '', event_date: getBrasiliaDateString()
     });
 
     // Upload State
@@ -161,7 +162,7 @@ export default function Gallery() {
     };
 
     const handleOpenModal = () => {
-        setFormData({ name: '', description: '', event_date: new Date().toISOString().split('T')[0] });
+        setFormData({ name: '', description: '', event_date: getBrasiliaDateString() });
         setIsModalOpen(true);
     };
 
