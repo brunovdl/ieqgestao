@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { getBrasiliaDateString } from '../utils/timezone';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../state/auth';
-import { Camera, Calendar, ArrowLeft, Plus, X, Upload, Trash2 } from 'lucide-react';
+import { Camera, Calendar, ArrowLeft, Plus, X, Upload, Trash2, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import './Gallery.css';
@@ -29,6 +29,24 @@ export default function Gallery() {
     const [selectedAlbum, setSelectedAlbum] = useState<Album | null>(null);
     const [photos, setPhotos] = useState<Photo[]>([]);
     const [loading, setLoading] = useState(true);
+    const [fullscreenIndex, setFullscreenIndex] = useState<number | null>(null);
+
+    // Fullscreen Keyboard Navigation
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (fullscreenIndex === null) return;
+            if (e.key === 'ArrowRight' && fullscreenIndex < photos.length - 1) {
+                setFullscreenIndex(fullscreenIndex + 1);
+            } else if (e.key === 'ArrowLeft' && fullscreenIndex > 0) {
+                setFullscreenIndex(fullscreenIndex - 1);
+            } else if (e.key === 'Escape') {
+                setFullscreenIndex(null);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [fullscreenIndex, photos.length]);
 
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -114,6 +132,25 @@ export default function Gallery() {
     const getPhotoUrl = (path: string) => {
         const { data } = supabase.storage.from('gallery').getPublicUrl(path);
         return data.publicUrl;
+    };
+
+    const handleDownload = async (path: string, event: React.MouseEvent) => {
+        event.stopPropagation();
+        try {
+            const { data, error } = await supabase.storage.from('gallery').download(path);
+            if (error) throw error;
+            const url = URL.createObjectURL(data);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = path.split('/').pop() || 'photo.jpg';
+            document.body.appendChild(a);
+            a.click();
+            URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        } catch (error) {
+            console.error('Erro ao baixar foto:', error);
+            alert('Erro ao baixar a foto.');
+        }
     };
 
     // Admin Functions
@@ -351,28 +388,64 @@ export default function Gallery() {
                     ) : (
                         <div className="photos-masonry">
                             {photos.length > 0 ? (
-                                photos.map(photo => (
-                                    <div key={photo.id} className="photo-item" style={{ position: 'relative' }}>
+                                photos.map((photo, index) => (
+                                    <div key={photo.id} className="photo-item" onClick={() => setFullscreenIndex(index)} style={{ cursor: 'pointer' }}>
                                         <img
                                             src={getPhotoUrl(photo.storage_path)}
                                             alt="Moment"
                                             loading="lazy"
                                         />
-                                        {(isAdmin || permissions?.galeria) && !permissions?.readonly && (
+                                        <div className="photo-actions">
                                             <button
-                                                onClick={(e) => { e.stopPropagation(); handleDeletePhoto(photo); }}
-                                                style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(220, 38, 38, 0.9)', color: 'white', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 20 }}
-                                                title="Excluir Foto"
+                                                className="action-btn"
+                                                onClick={(e) => handleDownload(photo.storage_path, e)}
+                                                title="Baixar"
                                             >
-                                                <Trash2 size={16} />
+                                                <Download size={16} />
                                             </button>
-                                        )}
+                                            {(isAdmin || permissions?.galeria) && !permissions?.readonly && (
+                                                <button
+                                                    className="action-btn delete-btn"
+                                                    onClick={(e) => { e.stopPropagation(); handleDeletePhoto(photo); }}
+                                                    title="Excluir Foto"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 ))
                             ) : (
                                 <div className="empty-state">Este álbum ainda não possui fotos.</div>
                             )}
                         </div>
+                    )}
+                </div>
+            )}
+
+            {fullscreenIndex !== null && photos[fullscreenIndex] && (
+                <div className="fullscreen-modal" onClick={() => setFullscreenIndex(null)}>
+                    <button className="close-fullscreen-btn" onClick={() => setFullscreenIndex(null)}>
+                        <X size={32} />
+                    </button>
+
+                    {fullscreenIndex > 0 && (
+                        <button className="nav-fullscreen-btn prev" onClick={(e) => { e.stopPropagation(); setFullscreenIndex(fullscreenIndex - 1); }}>
+                            <ChevronLeft size={36} />
+                        </button>
+                    )}
+
+                    <img
+                        src={getPhotoUrl(photos[fullscreenIndex].storage_path)}
+                        alt="Fullscreen view"
+                        className="fullscreen-image"
+                        onClick={(e) => e.stopPropagation()}
+                    />
+
+                    {fullscreenIndex < photos.length - 1 && (
+                        <button className="nav-fullscreen-btn next" onClick={(e) => { e.stopPropagation(); setFullscreenIndex(fullscreenIndex + 1); }}>
+                            <ChevronRight size={36} />
+                        </button>
                     )}
                 </div>
             )}

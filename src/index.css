@@ -135,10 +135,11 @@ body {
   max-width: 500px;
   border-radius: var(--radius-lg);
   padding: 2rem;
-  position: relative;
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  margin: auto;
+  box-sizing: border-box;
 }
 
 .admin-modal-header {

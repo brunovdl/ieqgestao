@@ -86,12 +86,12 @@ export default function Visitors() {
             if (error) throw error;
             setVisitors(data || []);
 
-            // Initialize all groups as expanded by default
+            // Initialize all groups as collapsed by default
             if (data) {
                 const uniqueDates = Array.from(new Set(data.map(v => v.date_visit.split('T')[0])));
                 const initialExpandedState: Record<string, boolean> = {};
                 uniqueDates.forEach(date => {
-                    initialExpandedState[date] = true;
+                    initialExpandedState[date] = false;
                 });
                 setExpandedDates(initialExpandedState);
             }
@@ -301,9 +301,15 @@ export default function Visitors() {
     // Sort dates descending
     const sortedDates = Object.keys(groupedVisitors).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
 
+    // Calculate global stats
+    const totalVisitorsCount = visitors.length;
+    const totalContactedCount = visitors.filter(v => v.contacted_at).length;
+    const totalPendingCount = visitors.filter(v => !v.contacted_at).length;
+
     return (
-        <div className="page-container animate-fade-in visitors-page">
-            <div className="page-header" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: '2rem', width: '100%', textAlign: 'left' }}>
+        <>
+            <div className="page-container animate-fade-in visitors-page">
+                <div className="page-header" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: '2rem', width: '100%', textAlign: 'left' }}>
                 <div style={{ textAlign: 'left' }}>
                     <h2 style={{ margin: 0, textAlign: 'left' }}>Registro de Visitantes</h2>
                     <p className="subtitle" style={{ margin: 0, textAlign: 'left' }}>Histórico de pessoas que visitaram a igreja</p>
@@ -314,6 +320,23 @@ export default function Visitors() {
                     </button>
                 )}
             </div>
+
+            {!loading && visitors.length > 0 && (
+                <div className="visitors-stats" style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+                    <div className="stat-card" style={{ flex: 1, minWidth: '150px', padding: '1rem', backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem', boxShadow: 'var(--shadow-sm)' }}>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>Total de Visitantes</span>
+                        <strong style={{ fontSize: '1.5rem', color: 'var(--text-primary)' }}>{totalVisitorsCount}</strong>
+                    </div>
+                    <div className="stat-card" style={{ flex: 1, minWidth: '150px', padding: '1rem', backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem', boxShadow: 'var(--shadow-sm)' }}>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>Contatados</span>
+                        <strong style={{ fontSize: '1.5rem', color: '#2e7d32' }}>{totalContactedCount}</strong>
+                    </div>
+                    <div className="stat-card" style={{ flex: 1, minWidth: '150px', padding: '1rem', backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem', boxShadow: 'var(--shadow-sm)' }}>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>Pendentes</span>
+                        <strong style={{ fontSize: '1.5rem', color: '#d32f2f' }}>{totalPendingCount}</strong>
+                    </div>
+                </div>
+            )}
 
             {loading ? (
                 <div className="loading-state">Carregando visitantes...</div>
@@ -327,6 +350,9 @@ export default function Visitors() {
                             const formattedDate = format(new Date(`${dateKey}T00:00:00`), "dd/MM/yyyy", { locale: ptBR });
                             const groupTitle = relatedEvent ? `${relatedEvent.title} - ${formattedDate}` : `Visitas: ${formattedDate}`;
 
+                            const groupContacted = groupVisitors.filter(v => v.contacted_at).length;
+                            const groupPending = groupVisitors.filter(v => !v.contacted_at).length;
+
                             return (
                                 <div key={dateKey} className="visitor-group" style={{ marginBottom: '1.5rem' }}>
                                     <div
@@ -334,9 +360,24 @@ export default function Visitors() {
                                         onClick={() => toggleGroup(dateKey)}
                                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem', backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-md)', cursor: 'pointer', border: '1px solid var(--border-color)', marginBottom: '0.5rem', boxShadow: 'var(--shadow-sm)' }}
                                     >
-                                        <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                                             <Calendar size={18} style={{ color: 'var(--primary-color)' }} />
-                                            {groupTitle} <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 'normal', marginLeft: '0.5rem' }}>({groupVisitors.length} pessoa{groupVisitors.length !== 1 ? 's' : ''})</span>
+                                            {groupTitle} 
+                                            <div style={{ display: 'flex', gap: '0.5rem', marginLeft: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                                                <span style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem', borderRadius: '1rem', backgroundColor: 'var(--bg-body)', color: 'var(--text-secondary)' }}>
+                                                    Total: {groupVisitors.length}
+                                                </span>
+                                                {groupContacted > 0 && (
+                                                    <span style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem', borderRadius: '1rem', backgroundColor: 'rgba(46, 125, 50, 0.1)', color: '#2e7d32', border: '1px solid rgba(46, 125, 50, 0.2)' }}>
+                                                        {groupContacted} {groupContacted === 1 ? 'Contatado' : 'Contatados'}
+                                                    </span>
+                                                )}
+                                                {groupPending > 0 && (
+                                                    <span style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem', borderRadius: '1rem', backgroundColor: 'rgba(211, 47, 47, 0.1)', color: '#d32f2f', border: '1px solid rgba(211, 47, 47, 0.2)' }}>
+                                                        {groupPending} {groupPending === 1 ? 'Pendente' : 'Pendentes'}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </h3>
                                         <div style={{ color: 'var(--text-secondary)' }}>
                                             {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
@@ -345,7 +386,13 @@ export default function Visitors() {
 
                                     {isExpanded && (
                                         <div className="visitor-group-content" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', paddingLeft: '0.5rem' }}>
-                                            {groupVisitors.map(visitor => (
+                                            {[...groupVisitors]
+                                                .sort((a, b) => {
+                                                    if (a.contacted_at && !b.contacted_at) return 1;
+                                                    if (!a.contacted_at && b.contacted_at) return -1;
+                                                    return 0;
+                                                })
+                                                .map(visitor => (
                                                 <div
                                                     key={visitor.id}
                                                     className={`visitor-card glass-effect ${visitor.contacted_at ? 'contacted' : 'pending'}`}
@@ -419,6 +466,7 @@ export default function Visitors() {
                     )}
                 </div>
             )}
+            </div>
 
             {/* Admin Add Visitor Modal */}
             {isModalOpen && (
@@ -635,6 +683,6 @@ export default function Visitors() {
                     </div>
                 </div>
             )}
-        </div>
+        </>
     );
 }
