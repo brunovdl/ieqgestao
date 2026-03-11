@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../state/auth';
-import { Shield, ShieldAlert, User, Plus, Edit2, X, Trash2 } from 'lucide-react';
+import { Shield, ShieldAlert, User, Plus, Edit2, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import Modal from '../components/Modal';
 import './Users.css';
 
 interface UserData {
@@ -253,152 +254,138 @@ export default function Users() {
             )}
 
             {/* Edit Permissions Modal */}
-            {isEditModalOpen && selectedUser && (
-                <div className="admin-modal-backdrop fadeIn" onClick={() => setIsEditModalOpen(false)}>
-                    <div className="admin-modal-content scaleIn" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
-                        <div className="admin-modal-header">
-                            <h3>Editar Permissões</h3>
-                            <button className="close-btn" onClick={() => setIsEditModalOpen(false)}><X size={24} /></button>
-                        </div>
-                        <form className="admin-form" onSubmit={handleSavePermissions}>
-                            <div style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: 'var(--bg-body)', borderRadius: 'var(--radius-md)' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                    <div className="user-avatar-small" style={{ width: '40px', height: '40px' }}>
-                                        <User size={20} color="var(--primary-color)" />
-                                    </div>
-                                    <div>
-                                        <h4 style={{ margin: 0 }}>{selectedUser.full_name || selectedUser.username}</h4>
-                                        <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>@{selectedUser.username}</p>
-                                    </div>
+            {selectedUser && (
+                <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="Editar Permissões">
+                    <form className="admin-form" onSubmit={handleSavePermissions}>
+                        <div style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: 'var(--bg-body)', borderRadius: 'var(--radius-md)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                <div className="user-avatar-small" style={{ width: '40px', height: '40px' }}>
+                                    <User size={20} color="var(--primary-color)" />
+                                </div>
+                                <div>
+                                    <h4 style={{ margin: 0 }}>{selectedUser.full_name || selectedUser.username}</h4>
+                                    <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>@{selectedUser.username}</p>
                                 </div>
                             </div>
+                        </div>
 
-                            <div className="permissions-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+                        <div className="permissions-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
 
-                                <label className="perm-toggle">
-                                    <input type="checkbox" checked={editPerms.is_admin} onChange={(e) => setEditPerms(prev => ({ ...prev, is_admin: e.target.checked }))} />
-                                    <span>Administrador (Acesso Total)</span>
-                                </label>
+                            <label className="perm-toggle">
+                                <input type="checkbox" checked={editPerms.is_admin} onChange={(e) => setEditPerms(prev => ({ ...prev, is_admin: e.target.checked }))} />
+                                <span>Administrador (Acesso Total)</span>
+                            </label>
 
-                                {!editPerms.is_admin && (
-                                    <>
-                                        <label className="perm-toggle">
-                                            <input type="checkbox" checked={editPerms.usuarios} onChange={(e) => setEditPerms(prev => ({ ...prev, usuarios: e.target.checked }))} />
-                                            <span>Gerir Usuários</span>
-                                        </label>
-                                        <label className="perm-toggle">
-                                            <input type="checkbox" checked={editPerms.visitantes} onChange={(e) => setEditPerms(prev => ({ ...prev, visitantes: e.target.checked }))} />
-                                            <span>Gerir Visitantes</span>
-                                        </label>
-                                        <label className="perm-toggle">
-                                            <input type="checkbox" checked={editPerms.celulas} onChange={(e) => setEditPerms(prev => ({ ...prev, celulas: e.target.checked }))} />
-                                            <span>Gerir Células</span>
-                                        </label>
-                                        <label className="perm-toggle">
-                                            <input type="checkbox" checked={editPerms.galeria} onChange={(e) => setEditPerms(prev => ({ ...prev, galeria: e.target.checked }))} />
-                                            <span>Gerir Galeria</span>
-                                        </label>
-                                        <label className="perm-toggle">
-                                            <input type="checkbox" checked={editPerms.eventos} onChange={(e) => setEditPerms(prev => ({ ...prev, eventos: e.target.checked }))} />
-                                            <span>Mural Eventos</span>
-                                        </label>
-                                        <label className="perm-toggle">
-                                            <input type="checkbox" checked={editPerms.carona} onChange={(e) => setEditPerms(prev => ({ ...prev, carona: e.target.checked }))} />
-                                            <span>Gerir Carona</span>
-                                        </label>
-                                        <label className="perm-toggle">
-                                            <input type="checkbox" checked={editPerms.analytics} onChange={(e) => setEditPerms(prev => ({ ...prev, analytics: e.target.checked }))} />
-                                            <span>Ver Analytics</span>
-                                        </label>
-                                        <label className="perm-toggle" style={{ borderLeft: '3px solid #fbd38d', paddingLeft: '0.5rem' }}>
-                                            <input type="checkbox" checked={editPerms.readonly} onChange={(e) => setEditPerms(prev => ({ ...prev, readonly: e.target.checked }))} />
-                                            <span>Modo Leitura (Apenas Ver)</span>
-                                        </label>
-                                    </>
-                                )}
-                            </div>
+                            {!editPerms.is_admin && (
+                                <>
+                                    <label className="perm-toggle">
+                                        <input type="checkbox" checked={editPerms.usuarios} onChange={(e) => setEditPerms(prev => ({ ...prev, usuarios: e.target.checked }))} />
+                                        <span>Gerir Usuários</span>
+                                    </label>
+                                    <label className="perm-toggle">
+                                        <input type="checkbox" checked={editPerms.visitantes} onChange={(e) => setEditPerms(prev => ({ ...prev, visitantes: e.target.checked }))} />
+                                        <span>Gerir Visitantes</span>
+                                    </label>
+                                    <label className="perm-toggle">
+                                        <input type="checkbox" checked={editPerms.celulas} onChange={(e) => setEditPerms(prev => ({ ...prev, celulas: e.target.checked }))} />
+                                        <span>Gerir Células</span>
+                                    </label>
+                                    <label className="perm-toggle">
+                                        <input type="checkbox" checked={editPerms.galeria} onChange={(e) => setEditPerms(prev => ({ ...prev, galeria: e.target.checked }))} />
+                                        <span>Gerir Galeria</span>
+                                    </label>
+                                    <label className="perm-toggle">
+                                        <input type="checkbox" checked={editPerms.eventos} onChange={(e) => setEditPerms(prev => ({ ...prev, eventos: e.target.checked }))} />
+                                        <span>Mural Eventos</span>
+                                    </label>
+                                    <label className="perm-toggle">
+                                        <input type="checkbox" checked={editPerms.carona} onChange={(e) => setEditPerms(prev => ({ ...prev, carona: e.target.checked }))} />
+                                        <span>Gerir Carona</span>
+                                    </label>
+                                    <label className="perm-toggle">
+                                        <input type="checkbox" checked={editPerms.analytics} onChange={(e) => setEditPerms(prev => ({ ...prev, analytics: e.target.checked }))} />
+                                        <span>Ver Analytics</span>
+                                    </label>
+                                    <label className="perm-toggle" style={{ borderLeft: '3px solid #fbd38d', paddingLeft: '0.5rem' }}>
+                                        <input type="checkbox" checked={editPerms.readonly} onChange={(e) => setEditPerms(prev => ({ ...prev, readonly: e.target.checked }))} />
+                                        <span>Modo Leitura (Apenas Ver)</span>
+                                    </label>
+                                </>
+                            )}
+                        </div>
 
-                            <div className="form-actions">
-                                <button type="button" className="btn btn-secondary" onClick={() => setIsEditModalOpen(false)}>Cancelar</button>
-                                <button type="submit" className="btn btn-primary" disabled={isSaving}>
-                                    {isSaving ? 'Salvando...' : 'Atualizar Permissões'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
+                        <div className="form-actions">
+                            <button type="button" className="btn btn-secondary" onClick={() => setIsEditModalOpen(false)}>Cancelar</button>
+                            <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                                {isSaving ? 'Salvando...' : 'Atualizar Permissões'}
+                            </button>
+                        </div>
+                    </form>
+                </Modal>
             )}
 
             {/* Create User Modal */}
-            {isCreateModalOpen && (
-                <div className="admin-modal-backdrop fadeIn" onClick={() => setIsCreateModalOpen(false)}>
-                    <div className="admin-modal-content scaleIn" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
-                        <div className="admin-modal-header">
-                            <h3>Cadastrar Novo Usuário</h3>
-                            <button className="close-btn" onClick={() => setIsCreateModalOpen(false)}><X size={24} /></button>
-                        </div>
-                        <form className="admin-form" onSubmit={handleCreateUser}>
-                            <div className="form-group">
-                                <label>Nome Completo</label>
-                                <input
-                                    type="text"
-                                    required
-                                    value={newUserForm.full_name}
-                                    onChange={(e) => setNewUserForm(prev => ({ ...prev, full_name: e.target.value }))}
-                                    placeholder="Ex: João Silva"
-                                />
-                            </div>
-                            <div className="form-group">
-                                <label>Nome de Usuário (Login)</label>
-                                <input
-                                    type="text"
-                                    required
-                                    value={newUserForm.username}
-                                    onChange={(e) => setNewUserForm(prev => ({ ...prev, username: e.target.value.replace(/\s+/g, '').toLowerCase() }))}
-                                    placeholder="Ex: joao.silva"
-                                />
-                            </div>
-                            <div className="form-group">
-                                <label>E-mail (Opcional)</label>
-                                <input
-                                    type="email"
-                                    value={newUserForm.email}
-                                    onChange={(e) => setNewUserForm(prev => ({ ...prev, email: e.target.value }))}
-                                    placeholder="joao@email.com"
-                                />
-                            </div>
-                            <div className="form-group">
-                                <label>Senha Padrão</label>
-                                <input
-                                    type="password"
-                                    required
-                                    minLength={6}
-                                    value={newUserForm.password}
-                                    onChange={(e) => setNewUserForm(prev => ({ ...prev, password: e.target.value }))}
-                                    placeholder="Mínimo 6 caracteres"
-                                />
-                            </div>
-
-                            <div className="form-group" style={{ marginTop: '1rem' }}>
-                                <label className="perm-toggle" style={{ border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-body)' }}>
-                                    <input type="checkbox" checked={newUserForm.is_admin} onChange={(e) => setNewUserForm(prev => ({ ...prev, is_admin: e.target.checked }))} />
-                                    <span>Cadastrar como Administrador Geral?</span>
-                                </label>
-                                <small style={{ color: 'var(--text-secondary)', marginTop: '0.5rem', display: 'block' }}>
-                                    Se não for administrador, o novo usuário terá permissões básicas de padrão. Você pode editar os detalhes após a criação.
-                                </small>
-                            </div>
-
-                            <div className="form-actions" style={{ marginTop: '2rem' }}>
-                                <button type="button" className="btn btn-secondary" onClick={() => setIsCreateModalOpen(false)}>Cancelar</button>
-                                <button type="submit" className="btn btn-primary" disabled={isSaving}>
-                                    {isSaving ? 'Criando...' : 'Criar Conta'}
-                                </button>
-                            </div>
-                        </form>
+            <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="Cadastrar Novo Usuário">
+                <form className="admin-form" onSubmit={handleCreateUser}>
+                    <div className="form-group">
+                        <label>Nome Completo</label>
+                        <input
+                            type="text"
+                            required
+                            value={newUserForm.full_name}
+                            onChange={(e) => setNewUserForm(prev => ({ ...prev, full_name: e.target.value }))}
+                            placeholder="Ex: João Silva"
+                        />
                     </div>
-                </div>
-            )}
+                    <div className="form-group">
+                        <label>Nome de Usuário (Login)</label>
+                        <input
+                            type="text"
+                            required
+                            value={newUserForm.username}
+                            onChange={(e) => setNewUserForm(prev => ({ ...prev, username: e.target.value.replace(/\s+/g, '').toLowerCase() }))}
+                            placeholder="Ex: joao.silva"
+                        />
+                    </div>
+                    <div className="form-group">
+                        <label>E-mail (Opcional)</label>
+                        <input
+                            type="email"
+                            value={newUserForm.email}
+                            onChange={(e) => setNewUserForm(prev => ({ ...prev, email: e.target.value }))}
+                            placeholder="joao@email.com"
+                        />
+                    </div>
+                    <div className="form-group">
+                        <label>Senha Padrão</label>
+                        <input
+                            type="password"
+                            required
+                            minLength={6}
+                            value={newUserForm.password}
+                            onChange={(e) => setNewUserForm(prev => ({ ...prev, password: e.target.value }))}
+                            placeholder="Mínimo 6 caracteres"
+                        />
+                    </div>
+
+                    <div className="form-group" style={{ marginTop: '1rem' }}>
+                        <label className="perm-toggle" style={{ border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-body)' }}>
+                            <input type="checkbox" checked={newUserForm.is_admin} onChange={(e) => setNewUserForm(prev => ({ ...prev, is_admin: e.target.checked }))} />
+                            <span>Cadastrar como Administrador Geral?</span>
+                        </label>
+                        <small style={{ color: 'var(--text-secondary)', marginTop: '0.5rem', display: 'block' }}>
+                            Se não for administrador, o novo usuário terá permissões básicas de padrão. Você pode editar os detalhes após a criação.
+                        </small>
+                    </div>
+
+                    <div className="form-actions" style={{ marginTop: '2rem' }}>
+                        <button type="button" className="btn btn-secondary" onClick={() => setIsCreateModalOpen(false)}>Cancelar</button>
+                        <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                            {isSaving ? 'Criando...' : 'Criar Conta'}
+                        </button>
+                    </div>
+                </form>
+            </Modal>
         </div>
     );
 }

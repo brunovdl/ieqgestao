@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../state/auth';
-import { Search, MapPin, Clock, Users as UsersIcon, Plus, Edit2, Trash2, PowerOff, X, Navigation } from 'lucide-react';
+import { Search, MapPin, Clock, Users as UsersIcon, Plus, Edit2, Trash2, PowerOff, Navigation } from 'lucide-react';
+import Modal from '../components/Modal';
 import './Cells.css';
 
 interface Cell {
@@ -220,122 +221,110 @@ export default function Cells() {
             )}
 
             {/* Admin Modal Form */}
-            {isModalOpen && (
-                <div className="admin-modal-backdrop fadeIn" onClick={handleCloseModal}>
-                    <div className="admin-modal-content scaleIn" onClick={(e) => e.stopPropagation()}>
-                        <div className="admin-modal-header">
-                            <h3>{editingCell ? 'Editar Casa de Cornélio' : 'Nova Casa de Cornélio'}</h3>
-                            <button className="close-btn" onClick={handleCloseModal}><X size={24} /></button>
-                        </div>
-                        <form className="admin-form" onSubmit={handleSave}>
-                            <div className="form-group">
-                                <label>Nome da Casa</label>
-                                <input required type="text" name="name" value={formData.name || ''} onChange={handleChange} placeholder="Ex: Casa Betânia" />
-                            </div>
-                            <div className="form-group">
-                                <label>Líder</label>
-                                <input required type="text" name="leader_name" value={formData.leader_name || ''} onChange={handleChange} placeholder="Nome do líder" />
-                            </div>
-                            <div className="form-group">
-                                <label>Anfitrião (Opcional)</label>
-                                <input type="text" name="host_name" value={formData.host_name || ''} onChange={handleChange} placeholder="Nome do anfitrião" />
-                            </div>
-                            <div className="form-group">
-                                <label>Endereço</label>
-                                <input type="text" name="address" value={formData.address || ''} onChange={handleChange} placeholder="Rua, Número, Bairro" />
-                            </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                <div className="form-group">
-                                    <label>Dia de Reunião</label>
-                                    <select name="meeting_day" value={formData.meeting_day || ''} onChange={handleChange} required>
-                                        <option value="">Selecione...</option>
-                                        <option value="Segunda-feira">Segunda-feira</option>
-                                        <option value="Terça-feira">Terça-feira</option>
-                                        <option value="Quarta-feira">Quarta-feira</option>
-                                        <option value="Quinta-feira">Quinta-feira</option>
-                                        <option value="Sexta-feira">Sexta-feira</option>
-                                        <option value="Sábado">Sábado</option>
-                                        <option value="Domingo">Domingo</option>
-                                    </select>
-                                </div>
-                                <div className="form-group">
-                                    <label>Horário</label>
-                                    <input type="time" name="meeting_time" value={formData.meeting_time || ''} onChange={handleChange} required />
-                                </div>
-                            </div>
-                            <div className="form-group checkbox-group">
-                                <input type="checkbox" id="active" name="active" checked={formData.active || false} onChange={handleChange} />
-                                <label htmlFor="active">Casa Ativa</label>
-                            </div>
-
-                            <div className="form-actions">
-                                <button type="button" className="btn btn-secondary" onClick={handleCloseModal}>Cancelar</button>
-                                <button type="submit" className="btn btn-primary" disabled={isSaving}>
-                                    {isSaving ? 'Salvando...' : 'Salvar Casa'}
-                                </button>
-                            </div>
-                        </form>
+            <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingCell ? 'Editar Casa de Cornélio' : 'Nova Casa de Cornélio'}>
+                <form className="admin-form" onSubmit={handleSave}>
+                    <div className="form-group">
+                        <label>Nome da Casa</label>
+                        <input required type="text" name="name" value={formData.name || ''} onChange={handleChange} placeholder="Ex: Casa Betânia" />
                     </div>
-                </div>
-            )}
+                    <div className="form-group">
+                        <label>Líder</label>
+                        <input required type="text" name="leader_name" value={formData.leader_name || ''} onChange={handleChange} placeholder="Nome do líder" />
+                    </div>
+                    <div className="form-group">
+                        <label>Anfitrião (Opcional)</label>
+                        <input type="text" name="host_name" value={formData.host_name || ''} onChange={handleChange} placeholder="Nome do anfitrião" />
+                    </div>
+                    <div className="form-group">
+                        <label>Endereço</label>
+                        <input type="text" name="address" value={formData.address || ''} onChange={handleChange} placeholder="Rua, Número, Bairro" />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                        <div className="form-group">
+                            <label>Dia de Reunião</label>
+                            <select name="meeting_day" value={formData.meeting_day || ''} onChange={handleChange} required>
+                                <option value="">Selecione...</option>
+                                <option value="Segunda-feira">Segunda-feira</option>
+                                <option value="Terça-feira">Terça-feira</option>
+                                <option value="Quarta-feira">Quarta-feira</option>
+                                <option value="Quinta-feira">Quinta-feira</option>
+                                <option value="Sexta-feira">Sexta-feira</option>
+                                <option value="Sábado">Sábado</option>
+                                <option value="Domingo">Domingo</option>
+                            </select>
+                        </div>
+                        <div className="form-group">
+                            <label>Horário</label>
+                            <input type="time" name="meeting_time" value={formData.meeting_time || ''} onChange={handleChange} required />
+                        </div>
+                    </div>
+                    <div className="form-group checkbox-group">
+                        <input type="checkbox" id="active" name="active" checked={formData.active || false} onChange={handleChange} />
+                        <label htmlFor="active">Casa Ativa</label>
+                    </div>
+
+                    <div className="form-actions">
+                        <button type="button" className="btn btn-secondary" onClick={handleCloseModal}>Cancelar</button>
+                        <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                            {isSaving ? 'Salvando...' : 'Salvar Casa'}
+                        </button>
+                    </div>
+                </form>
+            </Modal>
 
             {/* Cell Details Viewer Modal */}
-            {isDetailsModalOpen && selectedCell && (
-                <div className="admin-modal-backdrop fadeIn" onClick={() => setIsDetailsModalOpen(false)}>
-                    <div className="admin-modal-content scaleIn" onClick={(e) => e.stopPropagation()}>
-                        <div className="admin-modal-header" style={{ marginBottom: '1.5rem', alignItems: 'flex-start' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                <h3 style={{ fontSize: '1.5rem', margin: 0, color: 'var(--primary-color)' }}>{selectedCell.name}</h3>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    <span className={`status-badge ${selectedCell.active ? 'active' : 'inactive'}`} style={{ margin: 0 }}>
-                                        {selectedCell.active ? 'Status: Ativa' : 'Status: Inativa'}
-                                    </span>
-                                </div>
+            {selectedCell && (
+                <Modal 
+                    isOpen={isDetailsModalOpen} 
+                    onClose={() => setIsDetailsModalOpen(false)} 
+                    title={
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            <span style={{ fontSize: '1.5rem', color: 'var(--primary-color)', fontWeight: 'bold' }}>{selectedCell.name}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span className={`status-badge ${selectedCell.active ? 'active' : 'inactive'}`} style={{ margin: 0 }}>
+                                    {selectedCell.active ? 'Status: Ativa' : 'Status: Inativa'}
+                                </span>
                             </div>
-                            <button className="close-btn" onClick={() => setIsDetailsModalOpen(false)}><X size={24} /></button>
+                        </div>
+                    } 
+                    headerStyle={{ marginBottom: '1.5rem', alignItems: 'flex-start' }}
+                >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', color: 'var(--text-secondary)', fontSize: '0.95rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1.25rem' }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-primary)' }}>
+                                <UsersIcon size={18} style={{ color: 'var(--primary-color)' }} /> <strong>Líder:</strong> {selectedCell.leader_name}
+                            </span>
+                            {selectedCell.host_name && (
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-primary)' }}>
+                                    <UsersIcon size={18} style={{ color: '#f57c00' }} /> <strong>Anfitrião:</strong> {selectedCell.host_name}
+                                </span>
+                            )}
+                            {selectedCell.meeting_day && selectedCell.meeting_time && (
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-primary)' }}>
+                                    <Clock size={18} style={{ color: '#1976d2' }} /> <strong>Reunião:</strong> {selectedCell.meeting_day} às {selectedCell.meeting_time}
+                                </span>
+                            )}
                         </div>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', color: 'var(--text-secondary)', fontSize: '0.95rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1.25rem' }}>
-                                <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-primary)' }}>
-                                    <UsersIcon size={18} style={{ color: 'var(--primary-color)' }} /> <strong>Líder:</strong> {selectedCell.leader_name}
-                                </span>
-                                {selectedCell.host_name && (
-                                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-primary)' }}>
-                                        <UsersIcon size={18} style={{ color: '#f57c00' }} /> <strong>Anfitrião:</strong> {selectedCell.host_name}
-                                    </span>
-                                )}
-                                {selectedCell.meeting_day && selectedCell.meeting_time && (
-                                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-primary)' }}>
-                                        <Clock size={18} style={{ color: '#1976d2' }} /> <strong>Reunião:</strong> {selectedCell.meeting_day} às {selectedCell.meeting_time}
-                                    </span>
-                                )}
-                            </div>
-
-                            {selectedCell.address && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', backgroundColor: 'var(--bg-body)', padding: '1rem', borderRadius: 'var(--radius-md)' }}>
-                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', color: 'var(--text-primary)' }}>
-                                        <MapPin size={20} style={{ color: 'var(--primary-color)', flexShrink: 0, marginTop: '2px' }} />
-                                        <span style={{ lineHeight: '1.4' }}><strong>Endereço da Casa:</strong><br />{selectedCell.address}</span>
-                                    </div>
-                                    <button
-                                        className="btn btn-primary"
-                                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', width: '100%', marginTop: '0.5rem', backgroundColor: '#1976d2' }}
-                                        onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedCell.address)}`, '_blank')}
-                                    >
-                                        <Navigation size={18} /> Abrir no GPS (Maps)
-                                    </button>
+                        {selectedCell.address && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', backgroundColor: 'var(--bg-body)', padding: '1rem', borderRadius: 'var(--radius-md)' }}>
+                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', color: 'var(--text-primary)' }}>
+                                    <MapPin size={20} style={{ color: 'var(--primary-color)', flexShrink: 0, marginTop: '2px' }} />
+                                    <span style={{ lineHeight: '1.4' }}><strong>Endereço da Casa:</strong><br />{selectedCell.address}</span>
                                 </div>
-                            )}
-
-                            <div className="form-actions" style={{ marginTop: '1rem' }}>
-                                <button type="button" className="btn btn-secondary" onClick={() => setIsDetailsModalOpen(false)} style={{ width: '100%' }}>
-                                    Fechar Detalhes
+                                <button
+                                    className="btn btn-primary"
+                                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', width: '100%', marginTop: '0.5rem', backgroundColor: '#1976d2' }}
+                                    onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedCell.address)}`, '_blank')}
+                                >
+                                    <Navigation size={18} /> Abrir no GPS (Maps)
                                 </button>
                             </div>
-                        </div>
+                        )}
+
+
                     </div>
-                </div>
+                </Modal>
             )}
         </div>
     );

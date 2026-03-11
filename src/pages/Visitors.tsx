@@ -5,6 +5,8 @@ import { useAuthStore } from '../state/auth';
 import { Phone, MapPin, Calendar, CheckSquare, Plus, X, Search, Edit2, MessageSquare, Bot, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import Modal from '../components/Modal';
+import { generateAIText } from '../utils/ai';
 import './Visitors.css';
 
 interface Visitor {
@@ -250,29 +252,9 @@ export default function Visitors() {
             O tom deve ser acolhedor, agradecendo a visita, nos colocando à disposição para ajudar no que precisarem, e fazendo um convite para voltarem no próximo culto de celebração neste Domingo às 19h.
             Por favor, não use formatação complexa além de emojis e quebras de linha para WhatsApp.`;
 
-            const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${import.meta.env.VITE_GROQ_API_KEY}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    model: "llama-3.3-70b-versatile",
-                    messages: [
-                        { role: "system", content: "Você é um assistente de boas-vindas de uma Igreja Evangélica atuando pelo WhatsApp." },
-                        { role: "user", content: prompt }
-                    ],
-                    temperature: 0.7,
-                    max_tokens: 300
-                })
-            });
-
-            const data = await response.json();
-            if (data.choices && data.choices.length > 0) {
-                setAiGeneratedText(data.choices[0].message.content);
-            } else {
-                throw new Error("Resposta inválida da API");
-            }
+            const systemPrompt = "Você é um assistente de boas-vindas de uma Igreja Evangélica atuando pelo WhatsApp.";
+            const text = await generateAIText(prompt, systemPrompt);
+            setAiGeneratedText(text);
         } catch (error) {
             console.error("Erro ao gerar post via IA:", error);
             setAiGeneratedText("Desculpe, houve um erro ao comunicar com a inteligência artificial. Tente novamente mais tarde.");
@@ -469,219 +451,203 @@ export default function Visitors() {
             </div>
 
             {/* Admin Add Visitor Modal */}
-            {isModalOpen && (
-                <div className="admin-modal-backdrop fadeIn" onClick={handleCloseModal}>
-                    <div className="admin-modal-content scaleIn" onClick={(e) => e.stopPropagation()}>
-                        <div className="admin-modal-header">
-                            <h3>{editingId ? 'Editar Visitante' : 'Registrar Novo Visitante'}</h3>
-                            <button className="close-btn" onClick={handleCloseModal}><X size={24} /></button>
-                        </div>
-                        <form className="admin-form" onSubmit={handleSaveVisitor}>
-                            <div className="form-group">
-                                <label>Nome Completo*</label>
-                                <input required type="text" name="name" value={formData.name || ''} onChange={handleChange} placeholder="Nome do visitante" />
-                            </div>
-                            <div className="form-row grid-1-1">
-                                <div className="form-group">
-                                    <label>Telefone/WhatsApp</label>
-                                    <input type="tel" name="phone" value={formData.phone || ''} onChange={handleChange} placeholder="(00) 00000-0000" />
-                                </div>
-                                <div className="form-group">
-                                    <label>Data da Visita*</label>
-                                    <input required type="date" name="date_visit" value={formData.date_visit || ''} onChange={handleChange} />
-                                </div>
-                            </div>
-                            <div className="form-group">
-                                <label>CEP (Busca Automática)</label>
-                                <div className="cep-input-group" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                    <input
-                                        type="text"
-                                        value={cep}
-                                        onChange={(e) => {
-                                            setCep(e.target.value);
-                                            if (e.target.value.replace(/\D/g, '').length === 8) {
-                                                fetchCep(e.target.value);
-                                            }
-                                        }}
-                                        placeholder="00000-000"
-                                        style={{ flex: '1 1 min-content', minWidth: '150px' }}
-                                        maxLength={9}
-                                    />
-                                    <button
-                                        type="button"
-                                        className="btn btn-secondary"
-                                        onClick={() => fetchCep(cep)}
-                                        disabled={isLoadingCep}
-                                        style={{ flex: '1 1 auto', whiteSpace: 'nowrap' }}
-                                    >
-                                        <Search size={16} /> {isLoadingCep ? 'Buscando...' : 'Buscar'}
-                                    </button>
-                                </div>
-                            </div>
-                            <div className="form-group">
-                                <label>Logradouro / Rua</label>
-                                <input type="text" name="address" value={formData.address || ''} onChange={handleChange} placeholder="Av Paulista, Bairro, Cidade - UF" />
-                            </div>
-                            <div className="form-row grid-1-2">
-                                <div className="form-group">
-                                    <label>Número</label>
-                                    <input type="text" value={numero} onChange={(e) => setNumero(e.target.value)} placeholder="S/N" />
-                                </div>
-                                <div className="form-group">
-                                    <label>Complemento</label>
-                                    <input type="text" value={complemento} onChange={(e) => setComplemento(e.target.value)} placeholder="Apto, Bloco, Casa" />
-                                </div>
-                            </div>
-                            <div className="form-group">
-                                <label>Observações</label>
-                                <textarea
-                                    name="observations"
-                                    value={formData.observations || ''}
-                                    onChange={handleChange}
-                                    placeholder="Ex: Veio através de um amigo, deseja participar da célula..."
-                                    rows={3}
-                                    style={{ padding: '0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', fontFamily: 'inherit', resize: 'vertical' }}
-                                />
-                            </div>
-
-                            <div className="form-actions">
-                                <button type="button" className="btn btn-secondary" onClick={handleCloseModal}>Cancelar</button>
-                                <button type="submit" className="btn btn-primary" disabled={isSaving}>
-                                    {isSaving ? 'Salvando...' : 'Salvar Visitante'}
-                                </button>
-                            </div>
-                        </form>
+            <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingId ? 'Editar Visitante' : 'Registrar Novo Visitante'} maxWidth="600px">
+                <form className="admin-form" onSubmit={handleSaveVisitor}>
+                    <div className="form-group">
+                        <label>Nome Completo*</label>
+                        <input required type="text" name="name" value={formData.name || ''} onChange={handleChange} placeholder="Nome do visitante" />
                     </div>
-                </div>
-            )}
+                    <div className="form-row grid-1-1">
+                        <div className="form-group">
+                            <label>Telefone/WhatsApp</label>
+                            <input type="tel" name="phone" value={formData.phone || ''} onChange={handleChange} placeholder="(00) 00000-0000" />
+                        </div>
+                        <div className="form-group">
+                            <label>Data da Visita*</label>
+                            <input required type="date" name="date_visit" value={formData.date_visit || ''} onChange={handleChange} />
+                        </div>
+                    </div>
+                    <div className="form-group">
+                        <label>CEP (Busca Automática)</label>
+                        <div className="cep-input-group" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <input
+                                type="text"
+                                value={cep}
+                                onChange={(e) => {
+                                    setCep(e.target.value);
+                                    if (e.target.value.replace(/\D/g, '').length === 8) {
+                                        fetchCep(e.target.value);
+                                    }
+                                }}
+                                placeholder="00000-000"
+                                style={{ flex: '1 1 min-content', minWidth: '150px' }}
+                                maxLength={9}
+                            />
+                            <button
+                                type="button"
+                                className="btn btn-secondary"
+                                onClick={() => fetchCep(cep)}
+                                disabled={isLoadingCep}
+                                style={{ flex: '1 1 auto', whiteSpace: 'nowrap' }}
+                            >
+                                <Search size={16} /> {isLoadingCep ? 'Buscando...' : 'Buscar'}
+                            </button>
+                        </div>
+                    </div>
+                    <div className="form-group">
+                        <label>Logradouro / Rua</label>
+                        <input type="text" name="address" value={formData.address || ''} onChange={handleChange} placeholder="Av Paulista, Bairro, Cidade - UF" />
+                    </div>
+                    <div className="form-row grid-1-2">
+                        <div className="form-group">
+                            <label>Número</label>
+                            <input type="text" value={numero} onChange={(e) => setNumero(e.target.value)} placeholder="S/N" />
+                        </div>
+                        <div className="form-group">
+                            <label>Complemento</label>
+                            <input type="text" value={complemento} onChange={(e) => setComplemento(e.target.value)} placeholder="Apto, Bloco, Casa" />
+                        </div>
+                    </div>
+                    <div className="form-group">
+                        <label>Observações</label>
+                        <textarea
+                            name="observations"
+                            value={formData.observations || ''}
+                            onChange={handleChange}
+                            placeholder="Ex: Veio através de um amigo, deseja participar da célula..."
+                            rows={3}
+                            style={{ padding: '0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', fontFamily: 'inherit', resize: 'vertical' }}
+                        />
+                    </div>
+
+                    <div className="form-actions">
+                        <button type="button" className="btn btn-secondary" onClick={handleCloseModal}>Cancelar</button>
+                        <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                            {isSaving ? 'Salvando...' : 'Salvar Visitante'}
+                        </button>
+                    </div>
+                </form>
+            </Modal>
 
             {/* AI Generation Modal */}
-            {isAiModalOpen && (
-                <div className="admin-modal-backdrop fadeIn" onClick={() => setIsAiModalOpen(false)}>
-                    <div className="admin-modal-content scaleIn" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
-                        <div className="admin-modal-header">
-                            <h3><Bot size={20} style={{ marginRight: '8px', verticalAlign: 'middle', color: 'var(--primary-color)' }} /> Gerador de Boas-vindas IA</h3>
-                            <button className="close-btn" onClick={() => setIsAiModalOpen(false)}><X size={24} /></button>
+            <Modal isOpen={isAiModalOpen} onClose={() => setIsAiModalOpen(false)} title={<span style={{ display: 'flex', alignItems: 'center' }}><Bot size={20} style={{ marginRight: '8px', color: 'var(--primary-color)' }} /> Gerador de Boas-vindas IA</span>} maxWidth="500px">
+                <div className="admin-form" style={{ gap: '1rem', display: 'flex', flexDirection: 'column' }}>
+                    {isGeneratingAi ? (
+                        <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
+                            <Bot size={48} style={{ marginBottom: '1rem', opacity: 0.5, animation: 'pulse 2s infinite' }} />
+                            <p>A Inteligência Artificial está escrevendo sua mensagem de boas-vindas...</p>
                         </div>
-                        <div className="admin-form" style={{ gap: '1rem', display: 'flex', flexDirection: 'column' }}>
-                            {isGeneratingAi ? (
-                                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
-                                    <Bot size={48} style={{ marginBottom: '1rem', opacity: 0.5, animation: 'pulse 2s infinite' }} />
-                                    <p>A Inteligência Artificial está escrevendo sua mensagem de boas-vindas...</p>
-                                </div>
-                            ) : (
-                                <>
-                                    <p style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-secondary)' }}>
-                                        Abaixo está uma sugestão de mensagem gerada pela IA para acolher este visitante. Sinta-se à vontade para alterá-la antes de enviar.
-                                    </p>
-                                    <textarea
-                                        value={aiGeneratedText}
-                                        onChange={(e) => setAiGeneratedText(e.target.value)}
-                                        rows={8}
-                                        style={{ width: '100%', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', resize: 'vertical', fontFamily: 'inherit', lineHeight: '1.5' }}
-                                    />
-                                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-                                        <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setIsAiModalOpen(false)}>
-                                            Cancelar
-                                        </button>
-                                        <button
-                                            className="btn btn-primary"
-                                            style={{ flex: 1, backgroundColor: '#25D366' }}
-                                            onClick={() => {
-                                                handleWhatsAppDirect(currentVisitorPhone, aiGeneratedText);
-                                                setIsAiModalOpen(false);
-                                            }}
-                                        >
-                                            <MessageSquare size={18} /> Enviar via WhatsApp
-                                        </button>
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Visitor Details Viewer Modal */}
-            {isVisitorDetailsModalOpen && selectedVisitor && (
-                <div className="admin-modal-backdrop fadeIn" onClick={() => setIsVisitorDetailsModalOpen(false)}>
-                    <div className="admin-modal-content scaleIn" onClick={(e) => e.stopPropagation()}>
-                        <div className="admin-modal-header" style={{ marginBottom: '1.5rem', alignItems: 'flex-start' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                <h3 style={{ fontSize: '1.5rem', margin: 0, color: 'var(--primary-color)' }}>{selectedVisitor.name}</h3>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    <span className={`status-badge ${selectedVisitor.contacted_at ? 'active' : 'inactive'}`} style={{ margin: 0 }}>
-                                        {selectedVisitor.contacted_at ? 'Contatado' : 'Pendente'}
-                                    </span>
-                                </div>
-                            </div>
-                            <button className="close-btn" onClick={() => setIsVisitorDetailsModalOpen(false)}><X size={24} /></button>
-                        </div>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                            {selectedVisitor.phone && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)', backgroundColor: 'var(--bg-body)', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
-                                    <Phone size={20} style={{ color: 'var(--primary-color)' }} />
-                                    <span><strong>Telefone/WhatsApp:</strong> {selectedVisitor.phone}</span>
-                                </div>
-                            )}
-
-                            {selectedVisitor.address && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)', backgroundColor: 'var(--bg-body)', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
-                                    <MapPin size={20} style={{ color: 'var(--primary-color)' }} />
-                                    <span><strong>Endereço:</strong> {selectedVisitor.address}</span>
-                                </div>
-                            )}
-
-                            {selectedVisitor.observations && (
-                                <div style={{ marginTop: '0.5rem' }}>
-                                    <strong style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Observações:</strong>
-                                    <p style={{ lineHeight: '1.6', color: 'var(--text-primary)', whiteSpace: 'pre-wrap', margin: 0, fontSize: '1rem', backgroundColor: 'var(--bg-body)', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
-                                        {selectedVisitor.observations}
-                                    </p>
-                                </div>
-                            )}
-
-                            {selectedVisitor.contacted_at && (
-                                <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                                    <strong><CheckSquare size={16} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} /> Contatado por:</strong> {selectedVisitor.contacted_by} em {
-                                        (() => {
-                                            try {
-                                                return format(new Date(selectedVisitor.contacted_at), "dd/MM/yyyy HH:mm");
-                                            } catch (e) {
-                                                return selectedVisitor.contacted_at;
-                                            }
-                                        })()
-                                    }
-                                </div>
-                            )}
-
-                            <div className="form-actions" style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                {!selectedVisitor.contacted_at && !permissions?.readonly && (
-                                    <>
-                                        <button onClick={() => { setIsVisitorDetailsModalOpen(false); handleWhatsAppDirect(selectedVisitor.phone); }} className="btn btn-outline" style={{ flex: 1, minWidth: '140px', color: '#25D366', borderColor: '#25D366' }}>
-                                            <MessageSquare size={16} /> WhatsApp
-                                        </button>
-                                        <button onClick={() => { setIsVisitorDetailsModalOpen(false); handleGenerateAIPost(selectedVisitor); }} className="btn btn-outline" style={{ flex: 1, minWidth: '140px', color: 'var(--primary-color)', borderColor: 'var(--primary-color)' }}>
-                                            <Bot size={16} /> IA P/ Conversa
-                                        </button>
-                                        <button onClick={() => { setIsVisitorDetailsModalOpen(false); markAsContacted(selectedVisitor.id); }} className="btn btn-outline" style={{ width: '100%', color: '#2e7d32', borderColor: '#2e7d32' }}>
-                                            <CheckSquare size={18} /> Marcar Contatado
-                                        </button>
-                                    </>
-                                )}
-                                {selectedVisitor.contacted_at && !permissions?.readonly && (isAdmin || user?.full_name === selectedVisitor.contacted_by || user?.username === selectedVisitor.contacted_by) && (
-                                    <button onClick={() => { setIsVisitorDetailsModalOpen(false); unmarkAsContacted(selectedVisitor.id); }} className="btn btn-outline" style={{ width: '100%', color: '#d32f2f', borderColor: '#d32f2f' }}>
-                                        <X size={18} /> Desmarcar Contato
-                                    </button>
-                                )}
-                                <button type="button" className="btn btn-primary" onClick={() => setIsVisitorDetailsModalOpen(false)} style={{ width: '100%' }}>
-                                    Fechar
+                    ) : (
+                        <>
+                            <p style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-secondary)' }}>
+                                Abaixo está uma sugestão de mensagem gerada pela IA para acolher este visitante. Sinta-se à vontade para alterá-la antes de enviar.
+                            </p>
+                            <textarea
+                                value={aiGeneratedText}
+                                onChange={(e) => setAiGeneratedText(e.target.value)}
+                                rows={8}
+                                style={{ width: '100%', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', resize: 'vertical', fontFamily: 'inherit', lineHeight: '1.5' }}
+                            />
+                            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+                                <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setIsAiModalOpen(false)}>
+                                    Cancelar
+                                </button>
+                                <button
+                                    className="btn btn-primary"
+                                    style={{ flex: 1, backgroundColor: '#25D366' }}
+                                    onClick={() => {
+                                        handleWhatsAppDirect(currentVisitorPhone, aiGeneratedText);
+                                        setIsAiModalOpen(false);
+                                    }}
+                                >
+                                    <MessageSquare size={18} /> Enviar via WhatsApp
                                 </button>
                             </div>
+                        </>
+                    )}
+                </div>
+            </Modal>
+
+            {/* Visitor Details Viewer Modal */}
+            {selectedVisitor && (
+                <Modal 
+                    isOpen={isVisitorDetailsModalOpen} 
+                    onClose={() => setIsVisitorDetailsModalOpen(false)} 
+                    title={
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            <span style={{ fontSize: '1.5rem', color: 'var(--primary-color)', fontWeight: 'bold' }}>{selectedVisitor.name}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span className={`status-badge ${selectedVisitor.contacted_at ? 'active' : 'inactive'}`} style={{ margin: 0 }}>
+                                    {selectedVisitor.contacted_at ? 'Contatado' : 'Pendente'}
+                                </span>
+                            </div>
+                        </div>
+                    } 
+                    headerStyle={{ marginBottom: '1.5rem', alignItems: 'flex-start' }}
+                >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                        {selectedVisitor.phone && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)', backgroundColor: 'var(--bg-body)', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
+                                <Phone size={20} style={{ color: 'var(--primary-color)' }} />
+                                <span><strong>Telefone/WhatsApp:</strong> {selectedVisitor.phone}</span>
+                            </div>
+                        )}
+
+                        {selectedVisitor.address && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)', backgroundColor: 'var(--bg-body)', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
+                                <MapPin size={20} style={{ color: 'var(--primary-color)' }} />
+                                <span><strong>Endereço:</strong> {selectedVisitor.address}</span>
+                            </div>
+                        )}
+
+                        {selectedVisitor.observations && (
+                            <div style={{ marginTop: '0.5rem' }}>
+                                <strong style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Observações:</strong>
+                                <p style={{ lineHeight: '1.6', color: 'var(--text-primary)', whiteSpace: 'pre-wrap', margin: 0, fontSize: '1rem', backgroundColor: 'var(--bg-body)', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
+                                    {selectedVisitor.observations}
+                                </p>
+                            </div>
+                        )}
+
+                        {selectedVisitor.contacted_at && (
+                            <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                                <strong><CheckSquare size={16} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} /> Contatado por:</strong> {selectedVisitor.contacted_by} em {
+                                    (() => {
+                                        try {
+                                            return format(new Date(selectedVisitor.contacted_at), "dd/MM/yyyy HH:mm");
+                                        } catch (e) {
+                                            return selectedVisitor.contacted_at;
+                                        }
+                                    })()
+                                }
+                            </div>
+                        )}
+
+                        <div className="form-actions" style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            {!selectedVisitor.contacted_at && !permissions?.readonly && (
+                                <>
+                                    <button onClick={() => { setIsVisitorDetailsModalOpen(false); handleWhatsAppDirect(selectedVisitor.phone); }} className="btn btn-outline" style={{ flex: 1, minWidth: '140px', color: '#25D366', borderColor: '#25D366' }}>
+                                        <MessageSquare size={16} /> WhatsApp
+                                    </button>
+                                    <button onClick={() => { setIsVisitorDetailsModalOpen(false); handleGenerateAIPost(selectedVisitor); }} className="btn btn-outline" style={{ flex: 1, minWidth: '140px', color: 'var(--primary-color)', borderColor: 'var(--primary-color)' }}>
+                                        <Bot size={16} /> IA P/ Conversa
+                                    </button>
+                                    <button onClick={() => { setIsVisitorDetailsModalOpen(false); markAsContacted(selectedVisitor.id); }} className="btn btn-outline" style={{ width: '100%', color: '#2e7d32', borderColor: '#2e7d32' }}>
+                                        <CheckSquare size={18} /> Marcar Contatado
+                                    </button>
+                                </>
+                            )}
+                            {selectedVisitor.contacted_at && !permissions?.readonly && (isAdmin || user?.full_name === selectedVisitor.contacted_by || user?.username === selectedVisitor.contacted_by) && (
+                                <button onClick={() => { setIsVisitorDetailsModalOpen(false); unmarkAsContacted(selectedVisitor.id); }} className="btn btn-outline" style={{ width: '100%', color: '#d32f2f', borderColor: '#d32f2f' }}>
+                                    <X size={18} /> Desmarcar Contato
+                                </button>
+                            )}
+                            <button type="button" className="btn btn-primary" onClick={() => setIsVisitorDetailsModalOpen(false)} style={{ width: '100%' }}>
+                                Fechar
+                            </button>
                         </div>
                     </div>
-                </div>
+                </Modal>
             )}
         </>
     );

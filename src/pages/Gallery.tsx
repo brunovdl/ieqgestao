@@ -5,6 +5,7 @@ import { useAuthStore } from '../state/auth';
 import { Camera, Calendar, ArrowLeft, Plus, X, Upload, Trash2, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import Modal from '../components/Modal';
 import './Gallery.css';
 
 interface Album {
@@ -321,37 +322,29 @@ export default function Gallery() {
                     )}
 
                     {/* Admin Add Album Modal */}
-                    {isModalOpen && (
-                        <div className="admin-modal-backdrop fadeIn" onClick={() => setIsModalOpen(false)}>
-                            <div className="admin-modal-content scaleIn" onClick={(e) => e.stopPropagation()}>
-                                <div className="admin-modal-header">
-                                    <h3>Criar Novo Álbum</h3>
-                                    <button className="close-btn" onClick={() => setIsModalOpen(false)}><X size={24} /></button>
-                                </div>
-                                <form className="admin-form" onSubmit={handleSaveAlbum}>
-                                    <div className="form-group">
-                                        <label>Nome do Álbum*</label>
-                                        <input required type="text" name="name" value={formData.name || ''} onChange={handleChange} placeholder="Ex: Acampamento de Verão" />
-                                    </div>
-                                    <div className="form-group">
-                                        <label>Descrição</label>
-                                        <input type="text" name="description" value={formData.description || ''} onChange={handleChange} placeholder="Breve descrição do evento" />
-                                    </div>
-                                    <div className="form-group">
-                                        <label>Data do Evento*</label>
-                                        <input required type="date" name="event_date" value={formData.event_date || ''} onChange={handleChange} />
-                                    </div>
-
-                                    <div className="form-actions">
-                                        <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Cancelar</button>
-                                        <button type="submit" className="btn btn-primary" disabled={isSaving}>
-                                            {isSaving ? 'Salvando...' : 'Criar Álbum'}
-                                        </button>
-                                    </div>
-                                </form>
+                    <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Criar Novo Álbum">
+                        <form className="admin-form" onSubmit={handleSaveAlbum}>
+                            <div className="form-group">
+                                <label>Nome do Álbum*</label>
+                                <input required type="text" name="name" value={formData.name || ''} onChange={handleChange} placeholder="Ex: Acampamento de Verão" />
                             </div>
-                        </div>
-                    )}
+                            <div className="form-group">
+                                <label>Descrição</label>
+                                <input type="text" name="description" value={formData.description || ''} onChange={handleChange} placeholder="Breve descrição do evento" />
+                            </div>
+                            <div className="form-group">
+                                <label>Data do Evento*</label>
+                                <input required type="date" name="event_date" value={formData.event_date || ''} onChange={handleChange} />
+                            </div>
+
+                            <div className="form-actions">
+                                <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Cancelar</button>
+                                <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                                    {isSaving ? 'Salvando...' : 'Criar Álbum'}
+                                </button>
+                            </div>
+                        </form>
+                    </Modal>
                 </>
             ) : (
                 <div className="album-view animate-fade-in">

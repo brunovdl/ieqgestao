@@ -4,7 +4,9 @@ import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../state/auth';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { MapPin, Clock, ChevronLeft, ChevronRight, Plus, X, Trash2, Edit, Bot, Copy, Calendar, Repeat } from 'lucide-react';
+import { MapPin, Clock, ChevronLeft, ChevronRight, Plus, Trash2, Edit, Bot, Copy, Calendar, Repeat } from 'lucide-react';
+import Modal from '../components/Modal';
+import { generateAIText } from '../utils/ai';
 import './Home.css';
 
 interface AgendaEvent {
@@ -182,39 +184,12 @@ export default function Home() {
         setAiPostText('A IA está a criar o convite. Aguarde um instante...');
 
         try {
-            const apiKey = import.meta.env.VITE_GROQ_API_KEY;
-            if (!apiKey) {
-                setAiPostText('Erro: Chave da API (VITE_GROQ_API_KEY) não encontrada no ficheiro .env');
-                setIsGeneratingAi(false);
-                return;
-            }
-
             const prompt = `Crie um texto convidativo, curto e caloroso para o WhatsApp convidando as pessoas para o evento '${event.title}'. Detalhes: Dia ${format(new Date(`${event.event_date}T00:00:00`), 'dd/MM/yyyy')}, às ${event.event_time}, Local: ${event.location}. Descrição do evento: ${event.description || 'Um momento especial de comunhão'}. Não use aspas no início, seja direto, use a linguagem do Brasil num tom amigável para igreja, e inclua emojis.`;
-
-            const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${apiKey}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    model: "llama-3.3-70b-versatile",
-                    messages: [{ role: "user", content: prompt }],
-                    temperature: 0.7,
-                    max_tokens: 300
-                })
-            });
-
-            const data = await response.json();
-
-            if (data.choices && data.choices.length > 0) {
-                setAiPostText(data.choices[0].message.content);
-            } else {
-                setAiPostText('Não foi possível gerar o texto. Tente novamente.');
-            }
+            const text = await generateAIText(prompt);
+            setAiPostText(text);
         } catch (error) {
             console.error('Erro na IA:', error);
-            setAiPostText('Ocorreu um erro ao comunicar com a IA.');
+            setAiPostText('Ocorreu um erro ao comunicar com a IA. Verifique se a chave da API está configurada.');
         } finally {
             setIsGeneratingAi(false);
         }
@@ -342,146 +317,127 @@ export default function Home() {
             </div>
 
             {/* Admin Add Agenda Event Modal */}
-            {(isAdmin || permissions?.eventos) && !permissions?.readonly && isEventModalOpen && (
-                <div className="admin-modal-backdrop fadeIn" onClick={() => setIsEventModalOpen(false)}>
-                    <div className="admin-modal-content scaleIn" onClick={(e) => e.stopPropagation()}>
-                        <div className="admin-modal-header">
-                            <h3>Adicionar Evento na Agenda</h3>
-                            <button className="close-btn" onClick={() => setIsEventModalOpen(false)}><X size={24} /></button>
+            {(isAdmin || permissions?.eventos) && !permissions?.readonly && (
+                <Modal isOpen={isEventModalOpen} onClose={() => setIsEventModalOpen(false)} title={eventFormData.id ? 'Editar Evento' : 'Adicionar Evento'}>
+                    <form className="admin-form" onSubmit={handleSaveEvent}>
+                        <div className="form-group">
+                            <label>Título do Culto/Evento*</label>
+                            <input required type="text" name="title" value={eventFormData.title || ''} onChange={handleInputEventChange} placeholder="Ex: Culto de Celebração" />
                         </div>
-                        <form className="admin-form" onSubmit={handleSaveEvent}>
+                        <div className="form-group">
+                            <label>Descrição</label>
+                            <input type="text" name="description" value={eventFormData.description || ''} onChange={handleInputEventChange} placeholder="Ex: Culto da Família" />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                             <div className="form-group">
-                                <label>Título do Culto/Evento*</label>
-                                <input required type="text" name="title" value={eventFormData.title || ''} onChange={handleInputEventChange} placeholder="Ex: Culto de Celebração" />
-                            </div>
-                            <div className="form-group">
-                                <label>Descrição</label>
-                                <input type="text" name="description" value={eventFormData.description || ''} onChange={handleInputEventChange} placeholder="Ex: Culto da Família" />
-                            </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                <div className="form-group">
-                                    <label>Data*</label>
-                                    <input required type="date" name="event_date" value={eventFormData.event_date || ''} onChange={handleInputEventChange} />
-                                </div>
-                                <div className="form-group">
-                                    <label>Horário*</label>
-                                    <input required type="time" name="event_time" value={eventFormData.event_time || ''} onChange={handleInputEventChange} />
-                                </div>
+                                <label>Data*</label>
+                                <input required type="date" name="event_date" value={eventFormData.event_date || ''} onChange={handleInputEventChange} />
                             </div>
                             <div className="form-group">
-                                <label>Local</label>
-                                <input type="text" name="location" value={eventFormData.location || ''} onChange={handleInputEventChange} placeholder="Onde ocorrerá o evento" />
+                                <label>Horário*</label>
+                                <input required type="time" name="event_time" value={eventFormData.event_time || ''} onChange={handleInputEventChange} />
                             </div>
-                            <div className="form-group checkbox-group" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem', marginBottom: '1rem' }}>
-                                <input
-                                    type="checkbox"
-                                    id="is_recurring"
-                                    name="is_recurring"
-                                    checked={eventFormData.is_recurring || false}
-                                    onChange={(e) => setEventFormData({ ...eventFormData, is_recurring: e.target.checked })}
-                                    style={{ width: '1.2rem', height: '1.2rem', cursor: 'pointer' }}
-                                />
-                                <label htmlFor="is_recurring" style={{ cursor: 'pointer', margin: 0, fontWeight: 500 }}>Evento Recorrente (Repetir toda semana)</label>
-                            </div>
+                        </div>
+                        <div className="form-group">
+                            <label>Local</label>
+                            <input type="text" name="location" value={eventFormData.location || ''} onChange={handleInputEventChange} placeholder="Onde ocorrerá o evento" />
+                        </div>
+                        <div className="form-group checkbox-group" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem', marginBottom: '1rem' }}>
+                            <input
+                                type="checkbox"
+                                id="is_recurring"
+                                name="is_recurring"
+                                checked={eventFormData.is_recurring || false}
+                                onChange={(e) => setEventFormData({ ...eventFormData, is_recurring: e.target.checked })}
+                                style={{ width: '1.2rem', height: '1.2rem', cursor: 'pointer' }}
+                            />
+                            <label htmlFor="is_recurring" style={{ cursor: 'pointer', margin: 0, fontWeight: 500 }}>Evento Recorrente (Repetir toda semana)</label>
+                        </div>
 
-                            <div className="form-actions">
-                                <button type="button" className="btn btn-secondary" onClick={() => setIsEventModalOpen(false)}>Cancelar</button>
-                                <button type="submit" className="btn btn-primary" disabled={isSavingEvent}>
-                                    {isSavingEvent ? 'Salvando...' : 'Salvar Evento'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
+                        <div className="form-actions">
+                            <button type="button" className="btn btn-secondary" onClick={() => setIsEventModalOpen(false)}>Cancelar</button>
+                            <button type="submit" className="btn btn-primary" disabled={isSavingEvent}>
+                                {isSavingEvent ? 'Salvando...' : 'Salvar Evento'}
+                            </button>
+                        </div>
+                    </form>
+                </Modal>
             )}
 
             {/* AI Post Modal */}
-            {(isAdmin || permissions?.eventos) && !permissions?.readonly && isAiModalOpen && (
-                <div className="admin-modal-backdrop fadeIn" onClick={() => setIsAiModalOpen(false)}>
-                    <div className="admin-modal-content scaleIn" onClick={(e) => e.stopPropagation()}>
-                        <div className="admin-modal-header">
-                            <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Bot size={20} /> Gerador de Convite (IA)</h3>
-                            <button className="close-btn" onClick={() => setIsAiModalOpen(false)}><X size={24} /></button>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                            <textarea
-                                value={aiPostText}
-                                onChange={(e) => setAiPostText(e.target.value)}
-                                rows={8}
-                                style={{
-                                    width: '100%',
-                                    padding: '1rem',
-                                    borderRadius: 'var(--radius-sm)',
-                                    border: '1px solid var(--border-color)',
-                                    fontFamily: 'inherit',
-                                    resize: 'vertical',
-                                    fontSize: '0.95rem',
-                                    lineHeight: '1.5'
-                                }}
-                            />
+            {(isAdmin || permissions?.eventos) && !permissions?.readonly && (
+                <Modal isOpen={isAiModalOpen} onClose={() => setIsAiModalOpen(false)} title={<span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Bot size={20} /> Gerador de Convite (IA)</span>}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <textarea
+                            value={aiPostText}
+                            onChange={(e) => setAiPostText(e.target.value)}
+                            rows={8}
+                            style={{
+                                width: '100%',
+                                padding: '1rem',
+                                borderRadius: 'var(--radius-sm)',
+                                border: '1px solid var(--border-color)',
+                                fontFamily: 'inherit',
+                                resize: 'vertical',
+                                fontSize: '0.95rem',
+                                lineHeight: '1.5'
+                            }}
+                        />
 
-                            <div className="form-actions">
-                                <button type="button" className="btn btn-secondary" onClick={() => setIsAiModalOpen(false)}>Fechar</button>
-                                <button type="button" className="btn btn-primary" onClick={copyToClipboard} disabled={isGeneratingAi}>
-                                    <Copy size={16} /> Copiar Texto
-                                </button>
-                            </div>
+                        <div className="form-actions">
+                            <button type="button" className="btn btn-secondary" onClick={() => setIsAiModalOpen(false)}>Fechar</button>
+                            <button type="button" className="btn btn-primary" onClick={copyToClipboard} disabled={isGeneratingAi}>
+                                <Copy size={16} /> Copiar Texto
+                            </button>
                         </div>
                     </div>
-                </div>
+                </Modal>
             )}
             {/* Event Details Viewer Modal */}
-            {isEventDetailsModalOpen && selectedEvent && (
-                <div className="admin-modal-backdrop fadeIn" onClick={() => setIsEventDetailsModalOpen(false)}>
-                    <div className="admin-modal-content scaleIn" onClick={(e) => e.stopPropagation()}>
-                        <div className="admin-modal-header" style={{ marginBottom: '1.5rem' }}>
-                            <h3 style={{ fontSize: '1.5rem', margin: 0, color: 'var(--primary-color)' }}>{selectedEvent.title}</h3>
-                            <button className="close-btn" onClick={() => setIsEventDetailsModalOpen(false)}><X size={24} /></button>
+            {selectedEvent && (
+                <Modal isOpen={isEventDetailsModalOpen} onClose={() => setIsEventDetailsModalOpen(false)} title={<span style={{ fontSize: '1.5rem', color: 'var(--primary-color)' }}>{selectedEvent.title}</span>} headerStyle={{ marginBottom: '1.5rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', color: 'var(--text-secondary)', fontSize: '0.95rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1.25rem' }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                <Calendar size={18} /> {format(new Date(`${selectedEvent.event_date}T00:00:00`), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                            </span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                <Clock size={18} /> {selectedEvent.event_time.slice(0, 5)}
+                            </span>
+                            {selectedEvent.is_recurring && (
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--primary-color)', fontWeight: 500 }}>
+                                    <Repeat size={18} /> Semanal
+                                </span>
+                            )}
                         </div>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', color: 'var(--text-secondary)', fontSize: '0.95rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1.25rem' }}>
-                                <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                    <Calendar size={18} /> {format(new Date(`${selectedEvent.event_date}T00:00:00`), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
-                                </span>
-                                <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                    <Clock size={18} /> {selectedEvent.event_time.slice(0, 5)}
-                                </span>
-                                {selectedEvent.is_recurring && (
-                                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--primary-color)', fontWeight: 500 }}>
-                                        <Repeat size={18} /> Semanal
-                                    </span>
-                                )}
+                        {selectedEvent.location && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)', backgroundColor: 'var(--bg-body)', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
+                                <MapPin size={20} style={{ color: 'var(--primary-color)' }} />
+                                <span><strong>Localização:</strong> {selectedEvent.location}</span>
                             </div>
+                        )}
 
-                            {selectedEvent.location && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)', backgroundColor: 'var(--bg-body)', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
-                                    <MapPin size={20} style={{ color: 'var(--primary-color)' }} />
-                                    <span><strong>Localização:</strong> {selectedEvent.location}</span>
-                                </div>
+                        <div style={{ marginTop: '0.5rem' }}>
+                            <strong style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Detalhes do Evento:</strong>
+                            {selectedEvent.description ? (
+                                <p style={{ lineHeight: '1.6', color: 'var(--text-primary)', whiteSpace: 'pre-wrap', margin: 0, fontSize: '1rem' }}>
+                                    {selectedEvent.description}
+                                </p>
+                            ) : (
+                                <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic', margin: 0 }}>
+                                    Nenhuma informação extra fornecida.
+                                </p>
                             )}
+                        </div>
 
-                            <div style={{ marginTop: '0.5rem' }}>
-                                <strong style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Detalhes do Evento:</strong>
-                                {selectedEvent.description ? (
-                                    <p style={{ lineHeight: '1.6', color: 'var(--text-primary)', whiteSpace: 'pre-wrap', margin: 0, fontSize: '1rem' }}>
-                                        {selectedEvent.description}
-                                    </p>
-                                ) : (
-                                    <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic', margin: 0 }}>
-                                        Nenhuma informação extra fornecida.
-                                    </p>
-                                )}
-                            </div>
-
-                            <div className="form-actions" style={{ marginTop: '1rem' }}>
-                                <button type="button" className="btn btn-primary" onClick={() => setIsEventDetailsModalOpen(false)} style={{ width: '100%' }}>
-                                    Fechar
-                                </button>
-                            </div>
+                        <div className="form-actions" style={{ marginTop: '1rem' }}>
+                            <button type="button" className="btn btn-primary" onClick={() => setIsEventDetailsModalOpen(false)} style={{ width: '100%' }}>
+                                Fechar
+                            </button>
                         </div>
                     </div>
-                </div>
+                </Modal>
             )}
         </div>
     );

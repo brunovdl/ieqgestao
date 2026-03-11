@@ -67,6 +67,7 @@
     gap: 1rem;
     transition: transform 0.2s, box-shadow 0.2s;
     background-color: var(--bg-surface);
+    height: 100%;
 }
 
 .cell-card:hover {
@@ -115,6 +116,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
+    flex-grow: 1;
 }
 
 .info-row {
@@ -146,7 +148,7 @@
 .cell-admin-actions {
     display: flex;
     gap: 0.5rem;
-    margin-top: 1rem;
+    margin-top: auto;
     padding-top: 1rem;
     border-top: 1px solid var(--border-color);
 }
@@ -175,51 +177,6 @@
 .admin-action-btn.delete:hover {
     background-color: #feebe6;
     color: #c62828;
-}
-
-/* Base Modal form override */
-.admin-modal-backdrop {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(4px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-}
-
-.admin-modal-content {
-    background: var(--bg-surface);
-    width: 100%;
-    max-width: 500px;
-    border-radius: var(--radius-lg);
-    padding: 2rem;
-    position: relative;
-    max-height: 90vh;
-    overflow-y: auto;
-}
-
-.admin-modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1.5rem;
-}
-
-.admin-modal-header h3 {
-    margin: 0;
-    color: var(--primary-color);
-}
-
-.close-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: var(--text-secondary);
 }
 
 .admin-form {

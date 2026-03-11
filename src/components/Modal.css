@@ -1,0 +1,110 @@
+/* Reusable Modal Styles */
+.admin-modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(8px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+    padding: 1rem;
+    overflow-y: auto;
+}
+
+.admin-modal-content {
+    background-color: var(--bg-surface);
+    border-radius: var(--radius-lg);
+    width: 100%;
+    /* Default MaxWidth is applied via inline styles in React component if necessary, but keep a sensible default fallback here if not passed */
+    max-width: 450px;
+    padding: 2rem;
+    box-shadow: var(--shadow-xl), 0 0 0 1px var(--border-color);
+    position: relative;
+    max-height: 90vh;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+}
+
+.admin-modal-content::-webkit-scrollbar {
+    width: 8px;
+}
+.admin-modal-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+.admin-modal-content::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
+.admin-modal-content::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
+}
+
+.admin-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.admin-modal-header h3 {
+    margin: 0;
+    font-size: 1.4rem;
+    color: var(--text-primary);
+    font-weight: 700;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: all 0.2s;
+    margin: -0.5rem;
+}
+
+.close-btn:hover {
+    background-color: var(--bg-body);
+    color: var(--text-primary);
+    transform: rotate(90deg);
+}
+
+/* Animations */
+.fadeIn {
+    animation: fadeIn 0.3s ease-out forwards;
+}
+
+.scaleIn {
+    animation: scaleIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9) translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+@media (max-width: 768px) {
+    .admin-modal-content {
+        padding: 1.25rem;
+        max-width: 95vw !important;
+    }
+}
