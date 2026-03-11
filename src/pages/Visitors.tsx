@@ -642,9 +642,7 @@ export default function Visitors() {
                                     <X size={18} /> Desmarcar Contato
                                 </button>
                             )}
-                            <button type="button" className="btn btn-primary" onClick={() => setIsVisitorDetailsModalOpen(false)} style={{ width: '100%' }}>
-                                Fechar
-                            </button>
+
                         </div>
                     </div>
                 </Modal>

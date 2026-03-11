@@ -431,11 +431,7 @@ export default function Home() {
                             )}
                         </div>
 
-                        <div className="form-actions" style={{ marginTop: '1rem' }}>
-                            <button type="button" className="btn btn-primary" onClick={() => setIsEventDetailsModalOpen(false)} style={{ width: '100%' }}>
-                                Fechar
-                            </button>
-                        </div>
+
                     </div>
                 </Modal>
             )}
