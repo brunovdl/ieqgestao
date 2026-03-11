@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../state/auth';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { MapPin, Clock, ChevronLeft, ChevronRight, Plus, X, Trash2, Edit, Bot, Copy, Calendar } from 'lucide-react';
+import { MapPin, Clock, ChevronLeft, ChevronRight, Plus, X, Trash2, Edit, Bot, Copy, Calendar, Repeat } from 'lucide-react';
 import './Home.css';
 
 interface AgendaEvent {
@@ -14,6 +14,7 @@ interface AgendaEvent {
     event_date: string;
     event_time: string;
     location: string;
+    is_recurring?: boolean;
 }
 
 export default function Home() {
@@ -30,7 +31,7 @@ export default function Home() {
     const [isEventModalOpen, setIsEventModalOpen] = useState(false);
     const [isSavingEvent, setIsSavingEvent] = useState(false);
     const [eventFormData, setEventFormData] = useState<Partial<AgendaEvent>>({
-        title: '', description: '', event_date: getBrasiliaDateString(), event_time: '19:30', location: 'IEQ Jd Portugal'
+        title: '', description: '', event_date: getBrasiliaDateString(), event_time: '19:30', location: 'IEQ Jd Portugal', is_recurring: false
     });
 
     // AI Modal State
@@ -64,13 +65,39 @@ export default function Home() {
             const { data, error } = await supabase
                 .from('agenda')
                 .select('*')
-                .gte('event_date', today)
-                .order('event_date', { ascending: true })
-                .order('event_time', { ascending: true })
-                .limit(5);
+                .or(`event_date.gte.${today},is_recurring.eq.true`);
 
             if (error) throw error;
-            setEvents(data || []);
+
+            let processedEvents = (data || []).map(ev => {
+                if (ev.is_recurring && ev.event_date < today) {
+                    const originalDate = new Date(`${ev.event_date}T00:00:00`);
+                    const todayDate = new Date(`${today}T00:00:00`);
+                    
+                    let diff = originalDate.getDay() - todayDate.getDay();
+                    if (diff < 0) {
+                        diff += 7;
+                    }
+                    
+                    const nextDate = new Date(todayDate);
+                    nextDate.setDate(todayDate.getDate() + diff);
+                    
+                    return { ...ev, event_date: format(nextDate, 'yyyy-MM-dd') };
+                }
+                return ev;
+            });
+
+            // Ordena primeiro por data e depois por hora
+            processedEvents.sort((a, b) => {
+                if (a.event_date === b.event_date) {
+                    return a.event_time.localeCompare(b.event_time);
+                }
+                return a.event_date.localeCompare(b.event_date);
+            });
+
+            // Filtra os que não passaram e limita a 5
+            const futureEvents = processedEvents.filter(ev => ev.event_date >= today);
+            setEvents(futureEvents.slice(0, 5));
         } catch (err) {
             console.error('Erro ao buscar agenda', err);
         } finally {
@@ -107,7 +134,7 @@ export default function Home() {
         if (event) {
             setEventFormData(event);
         } else {
-            setEventFormData({ title: '', description: '', event_date: getBrasiliaDateString(), event_time: '19:30', location: 'IEQ Jd Portugal' });
+            setEventFormData({ title: '', description: '', event_date: getBrasiliaDateString(), event_time: '19:30', location: 'IEQ Jd Portugal', is_recurring: false });
         }
         setIsEventModalOpen(true);
     };
@@ -277,6 +304,7 @@ export default function Home() {
                                             <div className="agenda-meta">
                                                 <span className="meta-item"><Clock size={14} /> {ev.event_time.slice(0, 5)}</span>
                                                 {ev.location && <span className="meta-item"><MapPin size={14} /> {ev.location}</span>}
+                                                {ev.is_recurring && <span className="meta-item" style={{ color: 'var(--primary-color)' }}><Repeat size={14} /> Semanal</span>}
                                             </div>
                                         </div>
                                         {(isAdmin || permissions?.eventos) && !permissions?.readonly && (
@@ -344,6 +372,17 @@ export default function Home() {
                                 <label>Local</label>
                                 <input type="text" name="location" value={eventFormData.location || ''} onChange={handleInputEventChange} placeholder="Onde ocorrerá o evento" />
                             </div>
+                            <div className="form-group checkbox-group" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem', marginBottom: '1rem' }}>
+                                <input
+                                    type="checkbox"
+                                    id="is_recurring"
+                                    name="is_recurring"
+                                    checked={eventFormData.is_recurring || false}
+                                    onChange={(e) => setEventFormData({ ...eventFormData, is_recurring: e.target.checked })}
+                                    style={{ width: '1.2rem', height: '1.2rem', cursor: 'pointer' }}
+                                />
+                                <label htmlFor="is_recurring" style={{ cursor: 'pointer', margin: 0, fontWeight: 500 }}>Evento Recorrente (Repetir toda semana)</label>
+                            </div>
 
                             <div className="form-actions">
                                 <button type="button" className="btn btn-secondary" onClick={() => setIsEventModalOpen(false)}>Cancelar</button>
@@ -408,6 +447,11 @@ export default function Home() {
                                 <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                                     <Clock size={18} /> {selectedEvent.event_time.slice(0, 5)}
                                 </span>
+                                {selectedEvent.is_recurring && (
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--primary-color)', fontWeight: 500 }}>
+                                        <Repeat size={18} /> Semanal
+                                    </span>
+                                )}
                             </div>
 
                             {selectedEvent.location && (
