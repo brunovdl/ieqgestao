@@ -7,7 +7,7 @@ import Gallery from './pages/Gallery';
 import Visitors from './pages/Visitors';
 import Carpool from './pages/Carpool';
 import Users from './pages/Users';
-import Analytics from './pages/Analytics';
+import Profile from './pages/Profile';
 
 function App() {
     return (
@@ -24,7 +24,7 @@ function App() {
                             <Route path="/visitantes" element={<Visitors />} />
                             <Route path="/carona" element={<Carpool />} />
                             <Route path="/usuarios" element={<Users />} />
-                            <Route path="/analytics" element={<Analytics />} />
+                            <Route path="/perfil" element={<Profile />} />
                         </Routes>
                     </main>
                 </div>

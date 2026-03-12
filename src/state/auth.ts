@@ -5,6 +5,7 @@ interface User {
     id: string;
     username: string;
     full_name: string;
+    email?: string | null;
 }
 
 interface Permissions {
@@ -15,7 +16,6 @@ interface Permissions {
     carona: boolean;
     visitantes: boolean;
     usuarios: boolean;
-    analytics: boolean;
     eventos: boolean;
 }
 
@@ -27,6 +27,7 @@ interface AuthState {
     setLoginModalOpen: (isOpen: boolean) => void;
     login: (user: User, permissions: Permissions) => void;
     logout: () => void;
+    updateUser: (userData: Partial<User>) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -39,6 +40,9 @@ export const useAuthStore = create<AuthState>()(
             setLoginModalOpen: (isOpen) => set({ isLoginModalOpen: isOpen }),
             login: (user, permissions) => set({ user, permissions, isAuthenticated: true, isLoginModalOpen: false }),
             logout: () => set({ user: null, permissions: null, isAuthenticated: false }),
+            updateUser: (userData) => set((state) => ({ 
+                user: state.user ? { ...state.user, ...userData } : null 
+            })),
         }),
         {
             name: 'ieq-auth-session', // chave no localStorage

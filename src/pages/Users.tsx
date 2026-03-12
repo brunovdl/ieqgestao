@@ -39,7 +39,6 @@ export default function Users() {
         galeria: true,
         carona: true,
         eventos: false,
-        analytics: false
     });
 
     // Create State
@@ -86,7 +85,6 @@ export default function Users() {
             galeria: usr.permissions?.galeria ?? true,
             carona: usr.permissions?.carona ?? true,
             eventos: usr.permissions?.eventos || false,
-            analytics: usr.permissions?.analytics || false,
         });
         setIsEditModalOpen(true);
     };
@@ -104,7 +102,6 @@ export default function Users() {
                 galeria: editPerms.galeria,
                 carona: editPerms.carona,
                 eventos: editPerms.eventos,
-                analytics: editPerms.analytics,
             };
 
             const { error } = await supabase.from('users').update({
@@ -136,7 +133,7 @@ export default function Users() {
                 return;
             }
 
-            const defaultPerms = { celulas: true, galeria: false, readonly: true, usuarios: false, visitantes: false, eventos: false, carona: true, analytics: false };
+            const defaultPerms = { celulas: true, galeria: false, readonly: true, usuarios: false, visitantes: false, eventos: false, carona: true };
 
             const { error: insertError } = await supabase.from('users').insert([{
                 username: finalUsername,
@@ -301,10 +298,6 @@ export default function Users() {
                                     <label className="perm-toggle">
                                         <input type="checkbox" checked={editPerms.carona} onChange={(e) => setEditPerms(prev => ({ ...prev, carona: e.target.checked }))} />
                                         <span>Gerir Carona</span>
-                                    </label>
-                                    <label className="perm-toggle">
-                                        <input type="checkbox" checked={editPerms.analytics} onChange={(e) => setEditPerms(prev => ({ ...prev, analytics: e.target.checked }))} />
-                                        <span>Ver Analytics</span>
                                     </label>
                                     <label className="perm-toggle" style={{ borderLeft: '3px solid #fbd38d', paddingLeft: '0.5rem' }}>
                                         <input type="checkbox" checked={editPerms.readonly} onChange={(e) => setEditPerms(prev => ({ ...prev, readonly: e.target.checked }))} />

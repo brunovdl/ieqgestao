@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { getBrasiliaDateString, getBrasiliaTimestampString } from '../utils/timezone';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../state/auth';
-import { Phone, MapPin, Calendar, CheckSquare, Plus, X, Search, Edit2, MessageSquare, Bot, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Phone, MapPin, Calendar, CheckSquare, Plus, X, Search, Edit2, MessageSquare, Bot, Trash2, ChevronDown, ChevronUp, User } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import Modal from '../components/Modal';
@@ -18,6 +18,7 @@ interface Visitor {
     observations: string;
     contacted_by: string;
     contacted_at: string;
+    interaction_logs?: { user: string; text: string; date: string }[];
 }
 
 interface AgendaEvent {
@@ -56,6 +57,12 @@ export default function Visitors() {
     // Visitor Details Modal State
     const [selectedVisitor, setSelectedVisitor] = useState<Visitor | null>(null);
     const [isVisitorDetailsModalOpen, setIsVisitorDetailsModalOpen] = useState(false);
+    const [newInteractionText, setNewInteractionText] = useState('');
+    const [isAddingInteraction, setIsAddingInteraction] = useState(false);
+    
+    // Edit/Delete Interaction State
+    const [editingInteractionIndex, setEditingInteractionIndex] = useState<number | null>(null);
+    const [editingInteractionText, setEditingInteractionText] = useState('');
 
     if (!permissions?.visitantes && !isAdmin) {
         return <div className="page-container"><h2>Acesso Negado</h2><p>Você não tem permissão para ver esta página.</p></div>;
@@ -172,6 +179,105 @@ export default function Visitors() {
         } catch (err) {
             console.error("Erro ao excluir visitante", err);
             alert("Falha ao excluir visitante.");
+        }
+    };
+
+    const handleAddInteraction = async () => {
+        if (!selectedVisitor || !newInteractionText.trim()) return;
+
+        setIsAddingInteraction(true);
+        try {
+            const currentLogs = selectedVisitor.interaction_logs || [];
+            const newLog = {
+                user: user?.full_name || user?.username || 'Usuário Desconhecido',
+                text: newInteractionText.trim(),
+                date: getBrasiliaTimestampString()
+            };
+
+            const updatedLogs = [...currentLogs, newLog];
+
+            const { error } = await supabase
+                .from('visitors')
+                .update({ interaction_logs: updatedLogs })
+                .eq('id', selectedVisitor.id);
+
+            if (error) throw error;
+
+            // Atualiza os logs localmente no modal p/ reflexo imediato
+            setSelectedVisitor({ ...selectedVisitor, interaction_logs: updatedLogs });
+            setNewInteractionText('');
+            fetchVisitors(); // Reload list to update main view state
+
+        } catch (err) {
+            console.error('Erro ao adicionar interação:', err);
+            alert("Falha ao adicionar registro de contato.");
+        } finally {
+            setIsAddingInteraction(false);
+        }
+    };
+
+    const handleEditInteractionStart = (index: number, text: string) => {
+        setEditingInteractionIndex(index);
+        setEditingInteractionText(text);
+    };
+
+    const handleEditInteractionCancel = () => {
+        setEditingInteractionIndex(null);
+        setEditingInteractionText('');
+    };
+
+    const handleSaveEditInteraction = async (index: number) => {
+        if (!selectedVisitor || !editingInteractionText.trim()) return;
+
+        try {
+            const updatedLogs = [...(selectedVisitor.interaction_logs || [])];
+            updatedLogs[index] = {
+                ...updatedLogs[index],
+                text: editingInteractionText.trim(),
+            };
+
+            const { error } = await supabase
+                .from('visitors')
+                .update({ interaction_logs: updatedLogs })
+                .eq('id', selectedVisitor.id);
+
+            if (error) throw error;
+
+            setSelectedVisitor({ ...selectedVisitor, interaction_logs: updatedLogs });
+            setEditingInteractionIndex(null);
+            setEditingInteractionText('');
+            fetchVisitors(); 
+
+        } catch (err) {
+            console.error('Erro ao editar interação:', err);
+            alert("Falha ao salvar a edição.");
+        }
+    };
+
+    const handleDeleteInteraction = async (index: number) => {
+        if (!selectedVisitor) return;
+        if (!window.confirm("Certeza que deseja excluir este comentário?")) return;
+
+        try {
+            const updatedLogs = [...(selectedVisitor.interaction_logs || [])];
+            updatedLogs.splice(index, 1);
+
+            const { error } = await supabase
+                .from('visitors')
+                .update({ interaction_logs: updatedLogs })
+                .eq('id', selectedVisitor.id);
+
+            if (error) throw error;
+
+            setSelectedVisitor({ ...selectedVisitor, interaction_logs: updatedLogs });
+            if (editingInteractionIndex === index) {
+                handleEditInteractionCancel();
+            }
+            fetchVisitors(); 
+
+        } catch (err) {
+            console.error('Erro ao excluir interação:', err);
+            alert("Falha ao excluir o comentário.");
         }
     };
 
@@ -622,6 +728,95 @@ export default function Visitors() {
                                 }
                             </div>
                         )}
+
+                        {/* Histórico de Interações */}
+                        <div className="interaction-logs-section">
+                            <h4><MessageSquare size={18} /> Histórico de Interações</h4>
+                            
+                            {selectedVisitor.interaction_logs && selectedVisitor.interaction_logs.length > 0 ? (
+                                <div className="interaction-timeline">
+                                    <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+                                        Já houve {selectedVisitor.interaction_logs.length} registro(s) de interação com este visitante.
+                                    </div>
+                                    {selectedVisitor.interaction_logs.map((log, index) => {
+                                        const isOwner = user?.full_name === log.user || user?.username === log.user;
+                                        const canEditDelete = permissions?.is_admin || isAdmin || isOwner;
+
+                                        return (
+                                            <div key={index} className="interaction-item">
+                                                <div className="interaction-meta">
+                                                    <span className="interaction-user"><User size={14} /> {log.user}</span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                        <span>{log.date ? format(new Date(log.date), "dd/MM/yy HH:mm", { locale: ptBR }) : ''}</span>
+                                                        {canEditDelete && !permissions?.readonly && (
+                                                            <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                                                <button 
+                                                                    onClick={() => handleEditInteractionStart(index, log.text)}
+                                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary-color)', padding: 0 }}
+                                                                    title="Editar"
+                                                                >
+                                                                    <Edit2 size={13} />
+                                                                </button>
+                                                                <button 
+                                                                    onClick={() => handleDeleteInteraction(index)}
+                                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c62828', padding: 0 }}
+                                                                    title="Excluir"
+                                                                >
+                                                                    <Trash2 size={13} />
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                
+                                                {editingInteractionIndex === index ? (
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+                                                        <textarea
+                                                            value={editingInteractionText}
+                                                            onChange={(e) => setEditingInteractionText(e.target.value)}
+                                                            className="add-interaction-input"
+                                                            rows={2}
+                                                            autoFocus
+                                                        />
+                                                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                                                            <button type="button" className="btn btn-secondary" style={{ padding: '0.25rem 0.75rem', fontSize: '0.85rem' }} onClick={handleEditInteractionCancel}>Cancelar</button>
+                                                            <button type="button" className="btn btn-primary" style={{ padding: '0.25rem 0.75rem', fontSize: '0.85rem' }} onClick={() => handleSaveEditInteraction(index)}>Salvar</button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <p className="interaction-text">{log.text}</p>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', fontStyle: 'italic', marginBottom: '1.5rem' }}>
+                                    Nenhum histórico de interação registrado.
+                                </p>
+                            )}
+
+                            {/* Add Interaction Form */}
+                            {!permissions?.readonly && (
+                                <div className="add-interaction-form">
+                                    <textarea
+                                        value={newInteractionText}
+                                        onChange={(e) => setNewInteractionText(e.target.value)}
+                                        placeholder="Add registro (ex: Tentei contato hoje 11/03 as 10h sem sucesso)"
+                                        className="add-interaction-input"
+                                        rows={1}
+                                    />
+                                    <button 
+                                        type="button" 
+                                        className="btn btn-primary add-interaction-btn"
+                                        onClick={handleAddInteraction}
+                                        disabled={isAddingInteraction || !newInteractionText.trim()}
+                                    >
+                                        <Plus size={18} /> Add
+                                    </button>
+                                </div>
+                            )}
+                        </div>
 
                         <div className="form-actions" style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                             {!selectedVisitor.contacted_at && !permissions?.readonly && (

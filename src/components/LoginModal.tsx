@@ -47,10 +47,14 @@ export default function LoginModal({ onClose }: LoginModalProps) {
                     carona: isAdmin ? true : (perms.carona || false),
                     visitantes: isAdmin ? true : (perms.visitantes || false),
                     usuarios: isAdmin ? true : (perms.usuarios || false),
-                    analytics: isAdmin ? true : (perms.analytics || false),
                 };
 
-                login({ id: user.id, username: user.username, full_name: user.full_name || user.username }, finalPerms);
+                login({ 
+                    id: user.id, 
+                    username: user.username, 
+                    full_name: user.full_name || user.username,
+                    email: user.email
+                }, finalPerms);
 
                 // Atualiza last login
                 await supabase.from('users').update({ last_login: getBrasiliaTimestampString() }).eq('id', user.id);

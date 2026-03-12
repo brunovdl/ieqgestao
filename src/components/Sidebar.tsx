@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../state/auth';
-import { Home, Users, Camera, CarFront, UserPlus, BarChart3, LogIn, LogOut } from 'lucide-react';
+import { Home, Users, Camera, CarFront, UserPlus, LogIn, LogOut } from 'lucide-react';
 import './Sidebar.css';
 
 const publicRoutes = [
@@ -14,11 +14,11 @@ const protectedRoutes = [
     { path: '/galeria', name: 'Galeria', icon: Camera, permKey: 'galeria' },
     { path: '/visitantes', name: 'Visitantes', icon: UserPlus, permKey: 'visitantes' },
     { path: '/usuarios', name: 'Gestão de Usuários', icon: Users, permKey: 'usuarios' },
-    { path: '/analytics', name: 'Analytics', icon: BarChart3, permKey: 'is_admin' },
 ];
 
 export default function Sidebar() {
     const { isAuthenticated, permissions, logout } = useAuthStore();
+    const navigate = useNavigate();
 
     const activeRoutes = [...publicRoutes];
 
@@ -82,7 +82,7 @@ export default function Sidebar() {
 
             <div className="sidebar-footer">
                 {isAuthenticated ? (
-                    <button className="nav-item btn-logout" onClick={() => { logout(); closeSidebar(); }}>
+                    <button className="nav-item btn-logout" onClick={() => { logout(); closeSidebar(); navigate('/'); }}>
                         <LogOut className="nav-icon" size={20} />
                         <span>Sair</span>
                     </button>

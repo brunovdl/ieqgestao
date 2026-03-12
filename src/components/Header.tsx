@@ -1,6 +1,6 @@
 import { Menu, LogIn, User } from 'lucide-react';
 import { useAuthStore } from '../state/auth';
-import { useLocation } from 'react-router-dom';
+import { useLocation, Link } from 'react-router-dom';
 import LoginModal from './LoginModal';
 import './Header.css';
 
@@ -16,7 +16,7 @@ export default function Header() {
         if (path === '/visitantes') return 'Visitantes';
         if (path === '/carona') return 'Carona Solidária';
         if (path === '/usuarios') return 'Gestão de Usuários';
-        if (path === '/analytics') return 'Analytics';
+        if (path === '/perfil') return 'Meu Perfil';
         return 'Dashboard';
     };
 
@@ -46,10 +46,10 @@ export default function Header() {
                     </a>
 
                     {isAuthenticated ? (
-                        <div className="user-profile">
+                        <Link to="/perfil" className="user-profile" style={{ textDecoration: 'none', color: 'inherit' }} title="Meu Perfil">
                             <User size={20} />
                             <span className="user-name">{user?.full_name?.split(' ')[0]}</span>
-                        </div>
+                        </Link>
                     ) : (
                         <button className="icon-btn btn-login-header" onClick={() => setLoginModalOpen(true)} title="Entrar">
                             <LogIn size={24} color="var(--primary-color)" />
